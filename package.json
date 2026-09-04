@@ -1,0 +1,27 @@
+{
+  "name": "boringmoney",
+  "version": "1.0.0",
+  "description": "A private, local-first personal finance dashboard.",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "check": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rishirochan/BoringMoney.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/rishirochan/BoringMoney/issues"
+  },
+  "homepage": "https://github.com/rishirochan/BoringMoney#readme",
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}
