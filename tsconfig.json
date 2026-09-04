@@ -8,5 +8,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src/renderer.tsx", "src/App.tsx"]
+  "include": ["src/renderer/**/*.tsx"]
 }
