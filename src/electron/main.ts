@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { registerPlaidHandlers } from "./features/plaid/ipc.js";
 import { registerVaultHandlers } from "./features/vault/ipc.js";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,7 @@ function createWindow() {
 }
 
 registerVaultHandlers();
+registerPlaidHandlers();
 
 app.whenReady().then(createWindow);
 app.on("window-all-closed", () => app.quit());
