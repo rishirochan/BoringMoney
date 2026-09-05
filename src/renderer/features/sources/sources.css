@@ -1,0 +1,352 @@
+/* Sources page — statements panel + banks panel. Shared tokens/classes live in styles.css. */
+
+.src-page {
+  display: grid;
+  gap: 1.5rem;
+}
+.src-head {
+  display: grid;
+  gap: 0.35rem;
+}
+.src-dim {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.src-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.src-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
+@media (max-width: 52rem) {
+  .src-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.src-panel {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+.src-panel > h3 {
+  margin: 0;
+}
+
+/* storage folder row */
+.src-folder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+.src-folder-text {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.src-path {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.src-path.is-unset {
+  direction: ltr;
+  color: var(--text-dim);
+}
+
+/* drop zone */
+.src-drop {
+  font: inherit;
+  font-family: var(--font-sans);
+  color: inherit;
+  display: grid;
+  gap: 0.3rem;
+  place-content: center;
+  text-align: center;
+  width: 100%;
+  min-height: 9rem;
+  padding: 1.5rem;
+  background: var(--glass);
+  border: 1.5px dashed var(--glass-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.src-drop > * {
+  /* ponytail: kills dragleave flicker without an enter/leave counter */
+  pointer-events: none;
+}
+.src-drop:hover {
+  border-color: var(--accent);
+  background: var(--glass-hover);
+}
+.src-drop.is-over {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--glass));
+}
+.src-drop-title {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+.src-drop-hint {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+/* import results */
+.status {
+  display: grid;
+  gap: 0.5rem;
+}
+.status:empty {
+  display: none;
+}
+.src-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.src-results li {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: 0.15rem 0.5rem;
+  align-items: baseline;
+}
+.src-result-mark {
+  color: var(--accent);
+}
+.src-results .is-bad .src-result-mark,
+.src-results .is-bad .src-result-detail {
+  color: var(--down);
+}
+.src-result-name {
+  overflow-wrap: anywhere;
+}
+.src-result-detail {
+  grid-column: 2;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+
+/* documents, grouped by source */
+.src-docs {
+  display: grid;
+  gap: 0.6rem;
+}
+.src-groups,
+.src-doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.src-groups {
+  display: grid;
+  gap: 0.6rem;
+}
+.src-group {
+  overflow: hidden;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--source-color);
+  border-radius: var(--radius-sm);
+}
+.src-group-title {
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--source-color);
+}
+.src-doc-list li {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.7rem 0.75rem;
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.85rem;
+}
+.src-doc-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.src-doc-name {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.src-doc-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.7rem;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+.src-doc-validation {
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+.src-doc-validation.is-warn {
+  color: var(--warn);
+}
+.src-doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+.src-rename {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+.src-rename input {
+  min-width: 0;
+  flex: 1;
+}
+
+/* banks */
+.src-plaid {
+  display: grid;
+  gap: 1rem;
+}
+.src-intro {
+  display: grid;
+  gap: 0.35rem;
+}
+.src-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.src-field {
+  display: grid;
+  gap: 0.3rem;
+}
+.src-field input,
+.src-field select {
+  width: 100%;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+.src-secret-input {
+  position: relative;
+}
+.src-secret-input input {
+  padding-right: 2.5rem;
+}
+.src-secret-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  place-items: center;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.src-secret-toggle:hover,
+.src-secret-toggle:focus-visible {
+  color: var(--text);
+}
+.src-secret-toggle svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+.src-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.src-configured {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+.src-configured-text {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.src-banks {
+  display: grid;
+  gap: 0.6rem;
+}
+.src-bank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.src-bank-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+.src-bank-info {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+.src-bank-info strong {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.src-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}

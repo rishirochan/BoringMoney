@@ -14,14 +14,14 @@ function resultDetail(result: ImportResult): string {
 export default function ImportResults({ results }: { results: ImportResult[] }) {
   if (results.length === 0) return null;
   return (
-    <ul className="results">
+    <ul className="src-results">
       {results.map((result, index) => (
-        <li key={`${result.name}-${index}`} className={result.ok ? "ok" : "bad"}>
-          <span className="mark" aria-hidden="true">
+        <li key={`${result.name}-${index}`} className={result.ok ? "is-ok" : "is-bad"}>
+          <span className="src-result-mark" aria-hidden="true">
             {result.ok ? "✓" : "✕"}
           </span>
-          <span className="name">{result.name}</span>
-          <span className="detail">{resultDetail(result)}</span>
+          <span className="src-result-name">{result.name}</span>
+          <span className="src-result-detail">{resultDetail(result)}</span>
         </li>
       ))}
     </ul>

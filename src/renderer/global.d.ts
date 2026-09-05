@@ -38,6 +38,8 @@ type DocumentRecord = {
   importedAt: number;
   status: "parsed" | "failed" | "unsupported";
   error?: string;
+  /** User-assigned account label. Statements sharing one are deduped against each other. */
+  account?: string;
   transactionCount: number;
   summary?: StatementSummary;
   validation?: ValidationReport;
@@ -73,6 +75,30 @@ type ImportResult = {
   confidence?: number;
 };
 
+type PlaidEnvironment = "sandbox" | "production";
+
+type PlaidConnection = {
+  id: string;
+  institutionName: string;
+  connectedAt: number;
+  accounts: {
+    id: string;
+    name: string;
+    mask: string | null;
+    type: string | null;
+    subtype: string | null;
+  }[];
+};
+
+type PlaidStatus =
+  | { configured: false; environment: PlaidEnvironment; connections: [] }
+  | {
+      configured: true;
+      environment: PlaidEnvironment;
+      clientIdLast4: string;
+      connections: PlaidConnection[];
+    };
+
 interface Window {
   boringmoney: {
     getVaultPath(): Promise<string | null>;
@@ -81,8 +107,28 @@ interface Window {
     listFiles(): Promise<{ name: string; size: number; importedAt: number }[]>;
     listDocuments(): Promise<DocumentRecord[]>;
     getParsed(id: string): Promise<ParsedStatement | null>;
+    renameDocument(id: string, fileName: string): Promise<DocumentRecord>;
+    setDocumentAccount(id: string, account: string): Promise<DocumentRecord>;
     deleteDocument(id: string): Promise<DocumentRecord | null>;
     listTransactions(): Promise<StoredTransaction[]>;
+    exportTransactions(): Promise<
+      { ok: true; path: string } | { ok: false; canceled: true }
+    >;
+    getPlaidStatus(): Promise<PlaidStatus>;
+    getPlaidCredentials(): Promise<{
+      clientId: string;
+      secret: string;
+      environment: PlaidEnvironment;
+    }>;
+    savePlaidCredentials(credentials: {
+      clientId: string;
+      secret: string;
+      environment: PlaidEnvironment;
+    }): Promise<PlaidStatus>;
+    connectPlaid(): Promise<
+      { status: "cancelled" } | { status: "connected"; connection: PlaidConnection }
+    >;
+    disconnectPlaid(itemId: string): Promise<PlaidStatus>;
     getFilePath(file: File): string;
   };
 }
