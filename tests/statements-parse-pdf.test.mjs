@@ -236,6 +236,57 @@ async function createRoundTripPdf(filePath) {
   await fs.writeFile(filePath, await document.save());
 }
 
+test("running balance printed once per day signs rows without replacing their amounts", () => {
+  const result = parsePdfStatement({
+    kind: "pdf",
+    hasText: true,
+    pages: [[
+      "WELLS FARGO EVERYDAY CHECKING",
+      "Account Number: 1234 5678 9012 3456",
+      "Statement Period 12/16/2025 - 01/15/2026",
+      "Beginning Balance  $1,250.00",
+      "Ending Balance  $1,703.25",
+      "TRANSACTION HISTORY",
+      "1/3  Purchase authorized on 01/01 Starbucks Store  6.75",
+      "1/3  Purchase authorized on 01/02 Shell Oil  40.00  1,203.25",
+      "1/5  Direct deposit EMPLOYER PAYROLL  500.00  1,703.25",
+      "TOTAL TRANSACTIONS",
+    ]],
+  });
+  assert.equal(result.summary.accountLast4, "3456");
+  assert.deepEqual(
+    result.transactions.map((txn) => txn.amount),
+    [-6.75, -40, 500],
+  );
+  assert.equal(result.validation.checks.balanceReconciles, true);
+});
+
+test("section headers marked (continued) after a page break keep their sign evidence", () => {
+  const result = parsePdfStatement({
+    kind: "pdf",
+    hasText: true,
+    pages: [
+      [
+        "CHASE CREDIT CARD",
+        "Opening/Closing Date 12/16/25 - 01/15/26",
+        "Previous Balance  $100.00",
+        "New Balance  $70.00",
+        "PAYMENTS AND OTHER CREDITS",
+        "12/20  AUTOMATIC PAYMENT - THANK YOU  100.00",
+      ],
+      [
+        "PAYMENTS AND OTHER CREDITS (continued)",
+        "12/22  RETURN ACME STORE  10.00",
+        "PURCHASES",
+        "12/28  GROCERY MART  80.00",
+      ],
+    ],
+  });
+  assert.equal(transaction(result, "RETURN ACME STORE").amount, 10);
+  assert.equal(transaction(result, "GROCERY MART").amount, -80);
+  assert.equal(result.validation.checks.balanceReconciles, true);
+});
+
 test("round-trips generated PDF text through extraction and parsing", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "boringmoney-parse-pdf-"));
   const filePath = path.join(directory, "statement.pdf");

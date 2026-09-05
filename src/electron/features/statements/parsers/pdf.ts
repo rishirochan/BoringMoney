@@ -248,7 +248,8 @@ function detectAccountLast4(lines: string[]): string | undefined {
     /\bending\s+in\s+(?:[*Xx-]*\s*)?(\d{4})\b/i,
     /(?:XXXX|\*{4})(?:\s+(?:XXXX|\*{4})){0,2}\s+(\d{4})\b/i,
     /\*{4}\s*(\d{4})\b/,
-    /\b(?:account|card)\s+(?:number|no\.?)\s*[:#-]?\s*(?:[*Xx\d -]*?)(\d{4})\b/i,
+    // Greedy so a fully printed number yields its last group, not its first.
+    /\b(?:account|card)\s+(?:number|no\.?)\s*[:#-]?\s*[*Xx\d -]*(\d{4})\b/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -413,7 +414,11 @@ function readSummaryFacts(
 }
 
 function sectionHeader(line: string): Section | null {
-  const normalized = line.trim().replace(/[:*]+$/, "").trim();
+  const normalized = line
+    .trim()
+    .replace(/\s*\((?:continued|cont\.?)\)\s*$/i, "")
+    .replace(/[:*]+$/, "")
+    .trim();
   if (/^(?:PAYMENTS AND OTHER CREDITS|PAYMENTS AND CREDITS|PAYMENTS|CREDITS|DEPOSITS AND (?:OTHER )?ADDITIONS|DEPOSITS)$/i.test(normalized)) {
     return "credits";
   }
@@ -536,11 +541,14 @@ function signedAmount(
   previousBalance: number | null,
   flipDefaults: boolean,
 ): number {
-  if (candidate.balance !== undefined && previousBalance !== null) {
-    return round2(candidate.balance - previousBalance);
-  }
   const magnitude = Math.abs(candidate.printedAmount);
   if (magnitude === 0) return 0;
+  if (candidate.balance !== undefined && previousBalance !== null) {
+    // Banks often print the daily ending balance on the last row of a day only, so the
+    // delta can span several rows. Trust it for the sign only when it matches this row.
+    const delta = round2(candidate.balance - previousBalance);
+    if (Math.abs(Math.abs(delta) - magnitude) <= 0.01) return delta < 0 ? -magnitude : magnitude;
+  }
   if (candidate.creditMarker) return magnitude;
   if (candidate.printedAmount < 0) return kind === "bank" ? -magnitude : magnitude;
   if (candidate.section === "credits") return magnitude;

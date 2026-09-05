@@ -284,6 +284,28 @@ test("European semicolon export: comma decimals and 1.234,56", () => {
   assert.equal(salary.type, "payment");
 });
 
+test("newest-first export keeps same-day rows in file order for balance signs", () => {
+  const parsed = parseCsvStatement(
+    extractCsvText(
+      [
+        "Account Number: 1234 5678 9012 3456",
+        "Date,Description,Amount,Balance",
+        "01/20/2026,COFFEE SHOP,5.00,995.00",
+        "01/20/2026,DIRECT DEPOSIT,100.00,1000.00",
+        "01/19/2026,MONTHLY FEE,10.00,900.00",
+      ].join("\n"),
+    ),
+    { fileName: "checking.csv" },
+  );
+  assert.equal(parsed.summary.accountLast4, "3456");
+  assert.deepEqual(
+    parsed.transactions.map((txn) => [txn.description, txn.amount]),
+    [["MONTHLY FEE", 10], ["DIRECT DEPOSIT", 100], ["COFFEE SHOP", -5]],
+  );
+  assert.equal(parsed.summary.closingBalance, 995);
+  assert.equal(parsed.validation.checks.balanceReconciles, true);
+});
+
 test("preamble-only file: zero transactions, no throw, ok false", () => {
   const parsed = parse("preamble-only.csv");
   assert.equal(parsed.parser, "csv-generic");

@@ -53,7 +53,8 @@ type HeaderMatch = {
 const HEADER_SCAN_LIMIT = 30;
 const INFER_FRACTION = 0.8;
 // Leading \b does not fire before '*' / 'x' masks, so keep those alternatives unanchored.
-const LAST4 = /(?:\*{2,}|x{2,}|ending in|account (?:number|#)?[:\s]*)\s*(\d{4})\b/i;
+// The trailing class is greedy so a fully printed number yields its last group, not its first.
+const LAST4 = /(?:\*{2,}|x{2,}|ending in\s*|account (?:number|#)?[:\s]*[\d*x -]*)(\d{4})\b/i;
 const EUROPEAN_GROUPED = /\d\.\d{3},\d{2}/;
 const PAYMENT_LIKE = /payment|autopay|thank you/i;
 const CARD_KIND_CUES = [
@@ -797,9 +798,15 @@ export function parseCsvStatement(doc: ExtractedCsv, opts?: { fileName?: string 
     });
   }
 
+  // Same-day rows must follow the file's own direction, or balance deltas compare the
+  // wrong neighbours in newest-first exports.
+  const firstDraft = drafts[0];
+  const lastDraft = drafts[drafts.length - 1];
+  const newestFirst = firstDraft && lastDraft ? compareIso(firstDraft.date, lastDraft.date) > 0 : false;
   drafts.sort((left, right) => {
     const byDate = compareIso(left.date, right.date);
-    return byDate !== 0 ? byDate : left.sourceIndex - right.sourceIndex;
+    if (byDate !== 0) return byDate;
+    return newestFirst ? right.sourceIndex - left.sourceIndex : left.sourceIndex - right.sourceIndex;
   });
 
   if (!usedDebitCredit && columns.balance !== undefined) applyBalanceSigns(drafts);
