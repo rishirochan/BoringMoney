@@ -13,14 +13,55 @@ import {
   readVaultPath,
   writeVaultPath,
 } from "../dist-electron/features/vault/ingest.js";
+import {
+  STORE_DIR,
+  listDocuments,
+  listTransactions,
+  loadParsed,
+  removeDocument,
+} from "../dist-electron/features/documents/store.js";
 
 async function tmpDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "boringmoney-ingest-"));
 }
 
+function parsedStatement(description = "Coffee", amount = -4.5) {
+  return {
+    summary: {
+      statementPeriod: { from: "2026-01-01", to: "2026-01-31" },
+      openingBalance: null,
+      closingBalance: null,
+      totalPurchasesFees: amount < 0 ? -amount : 0,
+      totalPaymentsCredits: amount > 0 ? amount : 0,
+      accountKind: "unknown",
+    },
+    transactions: [
+      {
+        date: "2026-01-15",
+        description,
+        amount,
+        type: amount < 0 ? "purchase" : "payment",
+        rawLine: `2026-01-15,${description},${amount}`,
+      },
+    ],
+    validation: {
+      ok: true,
+      confidence: 1,
+      issues: [],
+      checks: {
+        balanceReconciles: true,
+        totalsMatch: null,
+        datesInPeriod: true,
+      },
+    },
+    parser: "test",
+  };
+}
+
+const fakeParse = async () => parsedStatement();
+
 test("isSupportedFile: extension filter, case-insensitive", () => {
-  assert.equal(isSupportedFile("statement.pdf"), true);
-  assert.equal(isSupportedFile("statement.PDF"), true);
+  assert.equal(isSupportedFile("statement.pdf"), false);
   assert.equal(isSupportedFile("data.csv"), true);
   assert.equal(isSupportedFile("data.CSV"), true);
   assert.equal(isSupportedFile("image.png"), false);
@@ -56,25 +97,26 @@ test("importFiles: one failure doesn't abort the batch; collisions renamed", asy
   const src = await tmpDir();
   const vault = await tmpDir();
 
-  const good1 = path.join(src, "statement.pdf");
+  const good1 = path.join(src, "statement.csv");
   const bad = path.join(src, "malware.exe");
-  await fs.writeFile(good1, "pdf-bytes");
+  await fs.writeFile(good1, "csv-bytes");
   await fs.writeFile(bad, "nope");
   // Pre-seed a same-named file in the vault to force a collision rename.
-  await fs.writeFile(path.join(vault, "statement.pdf"), "existing");
+  await fs.writeFile(path.join(vault, "statement.csv"), "existing");
 
-  const results = await importFiles(vault, [good1, bad]);
+  const results = await importFiles(vault, [good1, bad], { parse: fakeParse });
   assert.equal(results.length, 2);
   assert.equal(results[0].ok, true);
+  assert.equal(results[0].name, "statement (2).csv");
   assert.equal(results[1].ok, false);
   assert.equal(results[1].error, "unsupported file type");
 
   const files = await listFiles(vault);
   const names = files.map((f) => f.name).sort();
-  assert.deepEqual(names, ["statement (2).pdf", "statement.pdf"]);
+  assert.deepEqual(names, ["statement (2).csv", "statement.csv"]);
   // original vault copy untouched
-  assert.equal(await fs.readFile(path.join(vault, "statement.pdf"), "utf8"), "existing");
-  assert.equal(await fs.readFile(path.join(vault, "statement (2).pdf"), "utf8"), "pdf-bytes");
+  assert.equal(await fs.readFile(path.join(vault, "statement.csv"), "utf8"), "existing");
+  assert.equal(await fs.readFile(path.join(vault, "statement (2).csv"), "utf8"), "csv-bytes");
 });
 
 test("importFiles: same-named files all import", async () => {
@@ -87,11 +129,128 @@ test("importFiles: same-named files all import", async () => {
   await fs.writeFile(first, "first");
   await fs.writeFile(second, "second");
 
-  assert.ok((await importFiles(vault, [first, second])).every((result) => result.ok));
+  assert.ok(
+    (
+      await importFiles(vault, [first, second], {
+        parse: async (filePath) => parsedStatement(path.dirname(filePath)),
+      })
+    ).every((result) => result.ok)
+  );
   assert.deepEqual((await listFiles(vault)).map((file) => file.name).sort(), ["statement (2).csv", "statement.csv"]);
 });
 
-test("listFiles: filters to pdf/csv only, reports size and importedAt", async () => {
+test("importFile: duplicate content is rejected and its copied file is removed", async () => {
+  const src = await tmpDir();
+  const vault = await tmpDir();
+  const first = path.join(src, "first.csv");
+  const second = path.join(src, "second.csv");
+  await fs.writeFile(first, "same bytes");
+  await fs.writeFile(second, "same bytes");
+
+  const imported = await importFile(vault, first, { parse: fakeParse });
+  const duplicate = await importFile(vault, second, { parse: fakeParse });
+
+  assert.equal(imported.status, "parsed");
+  assert.deepEqual(duplicate, {
+    name: "second.csv",
+    ok: false,
+    error: "already imported as first.csv",
+  });
+  await assert.rejects(fs.access(path.join(vault, "second.csv")));
+  assert.equal((await listDocuments(vault)).length, 1);
+});
+
+test("importFiles rejects duplicate content in the same batch", async () => {
+  const src = await tmpDir();
+  const vault = await tmpDir();
+  const first = path.join(src, "first.csv");
+  const second = path.join(src, "second.csv");
+  await fs.writeFile(first, "same bytes");
+  await fs.writeFile(second, "same bytes");
+
+  const [imported, duplicate] = await importFiles(vault, [first, second], { parse: fakeParse });
+
+  assert.equal(imported.status, "parsed");
+  assert.deepEqual(duplicate, {
+    name: "second.csv",
+    ok: false,
+    error: "already imported as first.csv",
+  });
+  assert.equal((await listDocuments(vault)).length, 1);
+});
+
+test("importFile: parse failure saves a failed record without parsed JSON", async () => {
+  const src = await tmpDir();
+  const vault = await tmpDir();
+  const srcFile = path.join(src, "broken.csv");
+  await fs.writeFile(srcFile, "broken statement");
+
+  const result = await importFile(vault, srcFile, {
+    parse: async () => {
+      throw new Error("could not read statement");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "failed");
+  assert.equal(result.error, "could not read statement");
+  const [record] = await listDocuments(vault);
+  assert.equal(record.id, result.documentId);
+  assert.equal(record.error, "could not read statement");
+  assert.equal(record.transactionCount, 0);
+  assert.equal(await loadParsed(vault, record.id), null);
+  await assert.rejects(fs.access(path.join(vault, STORE_DIR, "parsed", `${record.id}.json`)));
+});
+
+test("importFile: parse success saves record, parsed JSON, and transaction count", async () => {
+  const src = await tmpDir();
+  const vault = await tmpDir();
+  const srcFile = path.join(src, "working.csv");
+  await fs.writeFile(srcFile, "working statement");
+  const parsed = parsedStatement("Groceries");
+
+  const result = await importFile(vault, srcFile, { parse: async () => parsed });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "parsed");
+  assert.equal(result.transactionCount, 1);
+  assert.equal(result.validationOk, true);
+  assert.equal(result.confidence, 1);
+  const [record] = await listDocuments(vault);
+  assert.equal(record.transactionCount, 1);
+  assert.deepEqual(await loadParsed(vault, record.id), parsed);
+  await fs.access(path.join(vault, STORE_DIR, "parsed", `${record.id}.json`));
+});
+
+test("transactions keep provenance and removing a document cascades", async () => {
+  const src = await tmpDir();
+  const vault = await tmpDir();
+  const firstPath = path.join(src, "first.csv");
+  const secondPath = path.join(src, "second.csv");
+  await fs.writeFile(firstPath, "first");
+  await fs.writeFile(secondPath, "second");
+
+  const first = await importFile(vault, firstPath, {
+    parse: async () => parsedStatement("First"),
+  });
+  const second = await importFile(vault, secondPath, {
+    parse: async () => parsedStatement("Second", -8),
+  });
+  const transactions = await listTransactions(vault);
+  assert.deepEqual(
+    new Set(transactions.map(({ documentId }) => documentId)),
+    new Set([first.documentId, second.documentId])
+  );
+
+  await removeDocument(vault, first.documentId, { deleteFile: false });
+  assert.deepEqual(
+    (await listTransactions(vault)).map(({ documentId }) => documentId),
+    [second.documentId]
+  );
+  assert.equal(await loadParsed(vault, first.documentId), null);
+});
+
+test("listFiles: filters to CSV only, reports size and importedAt", async () => {
   const vault = await tmpDir();
   await fs.writeFile(path.join(vault, "a.csv"), "12345");
   await fs.writeFile(path.join(vault, "b.pdf"), "1234567890");
@@ -99,9 +258,8 @@ test("listFiles: filters to pdf/csv only, reports size and importedAt", async ()
 
   const files = await listFiles(vault);
   const byName = Object.fromEntries(files.map((f) => [f.name, f]));
-  assert.equal(Object.keys(byName).length, 2);
+  assert.equal(Object.keys(byName).length, 1);
   assert.equal(byName["a.csv"].size, 5);
-  assert.equal(byName["b.pdf"].size, 10);
   assert.ok(byName["a.csv"].importedAt > 0);
 });
 

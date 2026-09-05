@@ -1,0 +1,12 @@
+WELLS FARGO EVERYDAY CHECKING
+Account Number: ****2468
+Statement Period 12/16/2025 - 01/15/2026
+Beginning Balance  $1,250.00
+Deposits and Additions  $500.00
+Withdrawals and Debits  $106.75
+Ending Balance  $1,643.25
+TRANSACTION HISTORY
+1/3  Purchase authorized on 01/01 Starbucks Store 12345 Seattle WA S123456789  6.75  1,243.25
+1/5  Direct deposit EMPLOYER PAYROLL  500.00  1,743.25
+1/8  ATM cash withdrawal downtown  100.00  1,643.25
+TOTAL TRANSACTIONS

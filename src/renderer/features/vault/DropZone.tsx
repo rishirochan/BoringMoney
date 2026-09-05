@@ -18,7 +18,7 @@ export default function DropZone({
     <>
       <button
         type="button"
-        className={"dropzone" + (over ? " is-over" : "")}
+        className={"src-drop" + (over ? " is-over" : "")}
         onClick={() => input.current?.click()}
         onDragOver={(e) => {
           e.preventDefault();
@@ -31,12 +31,12 @@ export default function DropZone({
           onFiles(paths(e.dataTransfer.files));
         }}
       >
-        <span className="dropzone-title">
-          {hasVault ? "Drop statements here" : "No storage folder yet"}
+        <span className="src-drop-title">
+          {hasVault ? "Drop CSV statements here" : "No storage folder yet"}
         </span>
-        <span className="dropzone-hint">
+        <span className="src-drop-hint">
           {hasVault
-            ? "PDF or CSV — or click to browse"
+            ? "CSV files, or click to browse"
             : "Choose a folder above, or drop files and we'll ask for one"}
         </span>
       </button>
@@ -44,7 +44,7 @@ export default function DropZone({
         ref={input}
         type="file"
         multiple
-        accept=".pdf,.csv"
+        accept=".csv,text/csv"
         hidden
         onChange={(e) => {
           onFiles(paths(e.target.files));
