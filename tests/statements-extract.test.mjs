@@ -160,6 +160,27 @@ test("CSV drops blank rows but keeps preamble rows", () => {
   ]);
 });
 
+test("CSV tolerates sloppy bank exports instead of failing the import", () => {
+  // stray quote inside an unquoted field
+  assert.deepEqual(extractCsvText('2026-01-01,5" PIPE FITTING,10.00\n').rows, [
+    ["2026-01-01", '5" PIPE FITTING', "10.00"],
+  ]);
+  // text after a closing quote is kept
+  assert.deepEqual(extractCsvText('2026-01-01,"ACME" CORP,10.00\n').rows, [
+    ["2026-01-01", "ACME CORP", "10.00"],
+  ]);
+  // bare carriage returns (classic Mac) end rows
+  assert.deepEqual(extractCsvText("a,b\r1,2\r3,4").rows, [
+    ["a", "b"],
+    ["1", "2"],
+    ["3", "4"],
+  ]);
+  // unterminated quote keeps what was read
+  assert.deepEqual(extractCsvText('2026-01-01,"Unfinished,10.00').rows, [
+    ["2026-01-01", "Unfinished,10.00"],
+  ]);
+});
+
 test("CSV file falls back to latin1 for invalid UTF-8", async () => {
   const dir = await tmpDir();
   const filePath = path.join(dir, "latin1.csv");

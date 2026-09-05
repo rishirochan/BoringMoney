@@ -230,6 +230,21 @@ test("corrupt and unknown-version manifests are treated as empty", async () => {
   assert.deepEqual(await listDocuments(vault), []);
 });
 
+test("one malformed manifest record is dropped without losing the others", async () => {
+  const vault = await tmpDir();
+  const good = documentRecord(21);
+  await saveDocument(vault, good);
+  const raw = JSON.parse(await fs.readFile(storeFile(vault, "documents.json"), "utf8"));
+  raw.documents.push({ id: "not-a-uuid", fileName: "x.pdf" });
+  await fs.writeFile(storeFile(vault, "documents.json"), JSON.stringify(raw));
+
+  assert.deepEqual((await listDocuments(vault)).map(({ id }) => id), [good.id]);
+  // a subsequent save must not wipe the good record
+  const another = documentRecord(22);
+  await saveDocument(vault, another);
+  assert.deepEqual((await listDocuments(vault)).map(({ id }) => id).sort(), [good.id, another.id].sort());
+});
+
 test("listTransactions skips one corrupt parsed file and keeps the others", async () => {
   const vault = await tmpDir();
   const corrupt = documentRecord(13);

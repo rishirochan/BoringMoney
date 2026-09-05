@@ -166,8 +166,10 @@ async function readManifest(vaultDir: string): Promise<DocumentRecord[]> {
     const raw = await fs.readFile(manifestPath(vaultDir), "utf8");
     const manifest = JSON.parse(raw) as unknown;
     if (!isObject(manifest) || manifest.version !== MANIFEST_VERSION) return [];
-    if (!Array.isArray(manifest.documents) || !manifest.documents.every(isDocumentRecord)) return [];
-    return manifest.documents;
+    if (!Array.isArray(manifest.documents)) return [];
+    // Drop only the bad records: rejecting the whole list would make the next save
+    // rewrite the manifest without every other document.
+    return manifest.documents.filter(isDocumentRecord);
   } catch {
     return [];
   }

@@ -84,10 +84,8 @@ function sniffDelimiter(text: string): Delimiter {
   return best?.delimiter ?? ",";
 }
 
-function invalidCsv(reason: string): Error {
-  return new Error(`Invalid CSV: ${reason}`);
-}
-
+// Lenient on purpose: bank exports are sloppy (stray quotes in descriptions, bare CR
+// line endings). A malformed cell should never fail a whole statement import.
 function parseRows(text: string, delimiter: Delimiter): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -120,19 +118,13 @@ function parseRows(text: string, delimiter: Delimiter): string[][] {
       }
       continue;
     }
-    if (closedQuote && character !== delimiter && character !== "\r" && character !== "\n") {
-      throw invalidCsv("unexpected character after closing quote");
-    }
-    if (character === "\"" && field.length === 0) {
+    if (character === "\"" && field.length === 0 && !closedQuote) {
       inQuotes = true;
-    } else if (character === "\"") {
-      throw invalidCsv("quote in unquoted field");
     } else if (character === delimiter) {
       finishField();
     } else if (character === "\r") {
-      if (text[index + 1] !== "\n") throw invalidCsv("bare carriage return");
       finishRow();
-      index++;
+      if (text[index + 1] === "\n") index++;
     } else if (character === "\n") {
       finishRow();
     } else {
@@ -140,8 +132,8 @@ function parseRows(text: string, delimiter: Delimiter): string[][] {
     }
   }
 
-  if (inQuotes) throw invalidCsv("unterminated quoted field");
-  if (row.length > 0 || field.length > 0 || closedQuote) finishRow();
+  // An unterminated quote keeps whatever was read as the final field.
+  if (row.length > 0 || field.length > 0 || closedQuote || inQuotes) finishRow();
   return rows;
 }
 

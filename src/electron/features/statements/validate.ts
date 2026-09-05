@@ -152,13 +152,18 @@ function skippedIssue(lines: string[]): ValidationIssue | null {
 
 function confidenceOf(issues: ValidationIssue[], balanceReconciles: boolean | null): number {
   let confidence = 1;
+  let hasError = false;
   for (const issue of issues) {
-    if (issue.severity === "error") confidence -= 0.5;
-    else if (issue.severity === "warning") confidence -= 0.15;
+    if (issue.severity === "error") {
+      confidence -= 0.5;
+      hasError = true;
+    } else if (issue.severity === "warning") confidence -= 0.15;
     else confidence -= 0.02;
   }
   confidence = Math.min(1, Math.max(0, confidence));
-  if (balanceReconciles === true) confidence = Math.max(confidence, 0.7);
+  // A reconciling balance vouches for the transactions, but not past a hard error
+  // (e.g. zero transactions with opening == closing reconciles trivially).
+  if (balanceReconciles === true && !hasError) confidence = Math.max(confidence, 0.7);
   return confidence;
 }
 
