@@ -1,0 +1,4 @@
+Transaction Date,Clearing Date,Description,Merchant,Category,Type,Amount (USD),Purchased By
+01/05/2026,01/06/2026,AMAZON,AMAZON,Shopping,Purchase,42.13,Rishi
+01/10/2026,01/10/2026,PAYMENT,PAYMENT,Payment,Payment,-150.00,Rishi
+01/15/2026,01/16/2026,STARBUCKS,STARBUCKS,Restaurants,Purchase,6.75,Rishi
