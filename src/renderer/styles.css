@@ -1,0 +1,249 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #faf9f7;
+  --ink: #1c1b19;
+  --ink-soft: #6b6862;
+  --rule: #e2ded7;
+  --field: #fff;
+  --accent: #2f6b4f;
+  --accent-wash: #eaf1ec;
+  --warn: #8a4b2a;
+  --bad: #9b3232;
+  --radius: 10px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16171a;
+    --ink: #e8e6e1;
+    --ink-soft: #9a968e;
+    --rule: #2c2e33;
+    --field: #1d1f23;
+    --accent: #7fb79a;
+    --accent-wash: #1e2a25;
+    --warn: #d6a075;
+    --bad: #e08a8a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem 6rem;
+  display: grid;
+  gap: 1.75rem;
+}
+
+/* masthead */
+.masthead h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.masthead p {
+  margin: 0.15rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+/* shared bits */
+.label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-soft);
+}
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* storage folder row */
+.vault {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--field);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.vault-text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path.is-unset {
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+/* drop zone */
+.dropzone {
+  font: inherit;
+  color: inherit;
+  display: grid;
+  gap: 0.3rem;
+  place-content: center;
+  text-align: center;
+  width: 100%;
+  min-height: 12rem;
+  padding: 2rem;
+  background: transparent;
+  border: 1.5px dashed var(--rule);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.dropzone > * {
+  /* ponytail: kills dragleave flicker without an enter/leave counter */
+  pointer-events: none;
+}
+.dropzone:hover {
+  border-color: var(--accent);
+}
+.dropzone.is-over {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.dropzone-title {
+  font-size: 1.05rem;
+  font-weight: 550;
+}
+.dropzone-hint {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* import results */
+.status:empty {
+  display: none;
+}
+.note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
+.note.is-warn {
+  color: var(--warn);
+}
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.results li {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.875rem;
+}
+.results .mark {
+  color: var(--accent);
+}
+.results .bad .mark,
+.results .bad .detail {
+  color: var(--bad);
+}
+.results .detail {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+/* vault file list */
+.vault-files h2 {
+  margin: 0 0 0.6rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.empty {
+  margin: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+.filelist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.filelist li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.6rem 0.15rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.875rem;
+}
+.filelist .meta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
