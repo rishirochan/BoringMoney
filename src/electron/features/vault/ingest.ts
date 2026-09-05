@@ -2,9 +2,34 @@
 // unit-tested with plain node against a real tmp dir.
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import {
+  findDuplicate,
+  hashFile,
+  newDocumentId,
+  removeDocument,
+  saveDocument,
+} from "../documents/store.js";
+import type {
+  DocumentRecord,
+  DocumentStatus,
+  ParsedStatement,
+} from "../statements/types.js";
+import { parseFile } from "../statements/parse.js";
 
-export type ImportResult = { name: string; ok: boolean; error?: string };
+export type ImportResult = {
+  name: string;
+  ok: boolean;
+  error?: string;
+  documentId?: string;
+  status?: DocumentStatus;
+  transactionCount?: number;
+  validationOk?: boolean;
+  confidence?: number;
+};
 export type FileEntry = { name: string; size: number; importedAt: number };
+type ImportDeps = {
+  parse?: (filePath: string) => Promise<ParsedStatement>;
+};
 
 const ALLOWED_EXTS = new Set([".pdf", ".csv"]);
 
@@ -31,31 +56,130 @@ export async function uniqueDestPath(dir: string, fileName: string): Promise<str
   }
 }
 
-// Copies one source file into vaultDir. Rejects unsupported extensions
-// without touching the filesystem. Never throws: caller gets {ok:false} instead.
-export async function importFile(vaultDir: string, srcPath: string): Promise<ImportResult> {
-  const name = path.basename(srcPath);
-  if (!isSupportedFile(name)) {
-    return { name, ok: false, error: "unsupported file type" };
-  }
-  try {
-    while (true) {
-      const dest = await uniqueDestPath(vaultDir, name);
-      try {
-        await fs.copyFile(srcPath, dest, fs.constants.COPYFILE_EXCL);
-        return { name, ok: true };
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      }
+async function copyToVault(vaultDir: string, srcPath: string): Promise<string> {
+  while (true) {
+    const destination = await uniqueDestPath(vaultDir, path.basename(srcPath));
+    try {
+      await fs.copyFile(srcPath, destination, fs.constants.COPYFILE_EXCL);
+      return destination;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-  } catch (err) {
-    return { name, ok: false, error: (err as Error).message };
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function createRecord(fileName: string, sha256: string, size: number): DocumentRecord {
+  return {
+    id: newDocumentId(),
+    fileName,
+    sha256,
+    size,
+    importedAt: Date.now(),
+    status: "failed",
+    transactionCount: 0,
+  };
+}
+
+async function rejectDuplicate(
+  vaultDir: string,
+  destination: string,
+  sha256: string
+): Promise<ImportResult | null> {
+  const duplicate = await findDuplicate(vaultDir, sha256);
+  if (!duplicate) return null;
+  if (!(await fileExists(path.join(vaultDir, duplicate.fileName)))) {
+    await removeDocument(vaultDir, duplicate.id, { deleteFile: false });
+    return null;
+  }
+
+  await fs.rm(destination);
+  return {
+    name: path.basename(destination),
+    ok: false,
+    error: `already imported as ${duplicate.fileName}`,
+  };
+}
+
+async function parseAndSave(
+  vaultDir: string,
+  destination: string,
+  record: DocumentRecord,
+  parse: (filePath: string) => Promise<ParsedStatement>
+): Promise<ImportResult> {
+  const name = record.fileName;
+  try {
+    const parsed = await parse(destination);
+    await saveDocument(vaultDir, record, parsed);
+    return {
+      name,
+      ok: true,
+      documentId: record.id,
+      status: "parsed",
+      transactionCount: parsed.transactions.length,
+      validationOk: parsed.validation.ok,
+      confidence: parsed.validation.confidence,
+    };
+  } catch (error) {
+    const message = errorMessage(error);
+    await saveDocument(vaultDir, { ...record, status: "failed", error: message });
+    return { name, ok: true, documentId: record.id, status: "failed", error: message };
+  }
+}
+
+// Copies before parsing so failed statements remain available for inspection.
+export async function importFile(
+  vaultDir: string,
+  srcPath: string,
+  deps?: ImportDeps
+): Promise<ImportResult> {
+  const sourceName = path.basename(srcPath);
+  if (!isSupportedFile(sourceName)) {
+    return { name: sourceName, ok: false, error: "unsupported file type" };
+  }
+
+  let destination: string | undefined;
+  try {
+    destination = await copyToVault(vaultDir, srcPath);
+    const name = path.basename(destination);
+    const sha256 = await hashFile(destination);
+    const duplicate = await rejectDuplicate(vaultDir, destination, sha256);
+    if (duplicate) return duplicate;
+
+    const { size } = await fs.stat(destination);
+    const record = createRecord(name, sha256, size);
+    const parse = deps?.parse ?? parseFile;
+    return parseAndSave(vaultDir, destination, record, parse);
+  } catch (error) {
+    return {
+      name: destination ? path.basename(destination) : sourceName,
+      ok: destination !== undefined,
+      error: errorMessage(error),
+    };
   }
 }
 
 // One failing file must not abort the rest of the batch.
-export async function importFiles(vaultDir: string, srcPaths: string[]): Promise<ImportResult[]> {
-  return Promise.all(srcPaths.map((path) => importFile(vaultDir, path)));
+export async function importFiles(
+  vaultDir: string,
+  srcPaths: string[],
+  deps?: ImportDeps
+): Promise<ImportResult[]> {
+  return Promise.all(srcPaths.map((srcPath) => importFile(vaultDir, srcPath, deps)));
 }
 
 export async function listFiles(vaultDir: string): Promise<FileEntry[]> {
