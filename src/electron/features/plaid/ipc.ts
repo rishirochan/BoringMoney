@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   ipcMain,
+  protocol,
   safeStorage,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
@@ -46,6 +47,8 @@ type LinkSuccess = Omit<PlaidConnection, "itemId" | "accessToken" | "connectedAt
 
 type JsonObject = Record<string, unknown>;
 const STORE_VERSION = 1;
+export const PLAID_LINK_SCHEME = "boring-money";
+const PLAID_LINK_URL = `${PLAID_LINK_SCHEME}://plaid-link/`;
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let activeLinkWindow: BrowserWindow | null = null;
 
@@ -174,8 +177,7 @@ function assertMainRenderer(event: IpcMainInvokeEvent): BrowserWindow {
   return window;
 }
 
-function linkHtml(linkToken: string): string {
-  const token = JSON.stringify(linkToken).replaceAll("<", "\\u003c");
+function linkHtml(): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -189,8 +191,10 @@ function linkHtml(linkToken: string): string {
   <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
   <script>
     try {
+      const linkToken = new URLSearchParams(location.hash.slice(1)).get("token");
+      if (!linkToken) throw new Error("Plaid link token is missing.");
       const handler = Plaid.create({
-        token: ${token},
+        token: linkToken,
         onLoad() { document.getElementById("status").remove(); },
         onSuccess(publicToken, metadata) { window.plaidLink.complete(publicToken, metadata); },
         onExit(error) {
@@ -204,6 +208,13 @@ function linkHtml(linkToken: string): string {
   </script>
 </body>
 </html>`;
+}
+
+export function registerPlaidLinkProtocol(): void {
+  protocol.handle(
+    PLAID_LINK_SCHEME,
+    () => new Response(linkHtml(), { headers: { "content-type": "text/html; charset=utf-8" } })
+  );
 }
 
 function openPlaidLink(parent: BrowserWindow, linkToken: string): Promise<LinkSuccess | null> {
@@ -264,7 +275,7 @@ function openPlaidLink(parent: BrowserWindow, linkToken: string): Promise<LinkSu
     linkWindow.once("ready-to-show", () => linkWindow.show());
     linkWindow.once("closed", () => finish(null));
     linkWindow
-      .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(linkHtml(linkToken))}`)
+      .loadURL(`${PLAID_LINK_URL}#token=${encodeURIComponent(linkToken)}`)
       .catch((error) => finish(null, error));
   });
 }

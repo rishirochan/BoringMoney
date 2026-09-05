@@ -1,10 +1,18 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, protocol } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { registerPlaidHandlers } from "./features/plaid/ipc.js";
+import {
+  PLAID_LINK_SCHEME,
+  registerPlaidHandlers,
+  registerPlaidLinkProtocol,
+} from "./features/plaid/ipc.js";
 import { registerVaultHandlers } from "./features/vault/ipc.js";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: PLAID_LINK_SCHEME, privileges: { standard: true, secure: true } },
+]);
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -28,5 +36,8 @@ function createWindow() {
 registerVaultHandlers();
 registerPlaidHandlers();
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  registerPlaidLinkProtocol();
+  createWindow();
+});
 app.on("window-all-closed", () => app.quit());
