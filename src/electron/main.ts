@@ -17,7 +17,12 @@ function createWindow() {
       preload: path.join(directory, "preload.cjs"),
     },
   });
-  window.loadFile(path.join(directory, "../dist/index.html"));
+  const devServerUrl = process.env.ELECTRON_DEV_SERVER_URL;
+  if (devServerUrl) {
+    window.loadURL(devServerUrl);
+  } else {
+    window.loadFile(path.join(directory, "../dist/index.html"));
+  }
 }
 
 registerVaultHandlers();
