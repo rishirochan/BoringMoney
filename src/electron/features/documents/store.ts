@@ -171,8 +171,12 @@ async function readManifest(vaultDir: string): Promise<DocumentRecord[]> {
     throw error;
   }
   const manifest = JSON.parse(raw) as unknown;
-  if (!isObject(manifest) || manifest.version !== MANIFEST_VERSION) return [];
-  if (!Array.isArray(manifest.documents)) return [];
+  if (!isObject(manifest) || manifest.version !== MANIFEST_VERSION) {
+    throw new Error("Unsupported document manifest version");
+  }
+  if (!Array.isArray(manifest.documents)) {
+    throw new Error("Invalid document manifest");
+  }
   // Drop only the bad records: rejecting the whole list would make the next save
   // rewrite the manifest without every other document.
   return manifest.documents.filter(isDocumentRecord);

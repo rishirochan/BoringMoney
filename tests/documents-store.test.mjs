@@ -248,14 +248,20 @@ test("corrupt manifests fail without being overwritten", async () => {
   assert.equal(await fs.readFile(storeFile(vault, "documents.json"), "utf8"), "{broken");
 });
 
-test("unknown manifest versions are treated as empty", async () => {
-  const vault = await tmpDir();
-  await fs.mkdir(storeFile(vault), { recursive: true });
-  await fs.writeFile(
-    storeFile(vault, "documents.json"),
-    JSON.stringify({ version: 2, documents: [documentRecord(12)] })
-  );
-  assert.deepEqual(await listDocuments(vault), []);
+test("unsupported and malformed manifests fail without being overwritten", async () => {
+  const cases = [
+    [{ version: 2, documents: [documentRecord(12)] }, /Unsupported document manifest version/],
+    [{ version: 1, documents: "broken" }, /Invalid document manifest/],
+  ];
+  for (const [manifest, expectedError] of cases) {
+    const vault = await tmpDir();
+    const raw = JSON.stringify(manifest);
+    await fs.mkdir(storeFile(vault), { recursive: true });
+    await fs.writeFile(storeFile(vault, "documents.json"), raw);
+    await assert.rejects(listDocuments(vault), expectedError);
+    await assert.rejects(saveDocument(vault, documentRecord(13)), expectedError);
+    assert.equal(await fs.readFile(storeFile(vault, "documents.json"), "utf8"), raw);
+  }
 });
 
 test("one malformed manifest record is dropped without losing the others", async () => {
