@@ -1,0 +1,17 @@
+CAPITAL ONE CREDIT CARD
+Account Number  ****9090
+Statement Period 12/16/25 - 01/15/26
+Previous Balance  $400.00
+Payments and Credits  $325.00
+Purchases  $125.00
+Fees Charged  $0.00
+Interest Charged  $0.00
+New Balance  $200.00
+Minimum Payment Due  $20.00
+CREDITS
+01/05  RETURN TARGET 00012345  25.00 CR
+01/07  PAYMENT RECEIVED  (300.00)
+TOTAL CREDITS
+PURCHASES
+01/10  OFFICE SUPPLY STORE  125.00
+TOTAL PURCHASES

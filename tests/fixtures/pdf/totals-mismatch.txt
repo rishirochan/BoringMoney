@@ -1,0 +1,17 @@
+CITI CREDIT CARD
+Account ending 3333
+Statement Period 03/01/26 - 03/31/26
+Previous Balance  $100.00
+Payments and Credits  $20.00
+Purchases  $60.50
+Fees Charged  $0.00
+Interest Charged  $0.00
+New Balance  $140.00
+Minimum Payment Due  $25.00
+PAYMENTS AND CREDITS
+03/05/26  ONLINE PAYMENT - THANK YOU  -20.00
+TOTAL PAYMENTS
+PURCHASES
+03/10/26  BOOK STORE  35.00
+03/14/26  COFFEE SHOP  25.00
+TOTAL PURCHASES
