@@ -10,6 +10,7 @@
     "dev": "pnpm build && electron .",
     "start": "electron .",
     "check": "tsc --noEmit -p tsconfig.electron.json && tsc --noEmit",
+    "test": "pnpm build && node --test tests/*.test.mjs",
     "package": "pnpm build && electron-builder"
   },
   "repository": {
@@ -35,12 +36,14 @@
     }
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.2.0",
     "electron-builder": "^26.15.3",
+    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"
   },
