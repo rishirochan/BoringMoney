@@ -28,7 +28,21 @@ export default function VaultPage() {
   }, []);
 
   useEffect(() => {
-    if (vault) window.boringmoney.listFiles().then(setFiles);
+    if (!vault) return;
+    let active = true;
+
+    window.boringmoney
+      .listFiles()
+      .then((nextFiles) => {
+        if (active) setFiles(nextFiles);
+      })
+      .catch((error) => {
+        if (active) setNotice(error instanceof Error ? error.message : "Could not load files.");
+      });
+
+    return () => {
+      active = false;
+    };
   }, [vault]);
 
   async function choose() {
