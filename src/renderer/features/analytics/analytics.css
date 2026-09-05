@@ -1,0 +1,58 @@
+.analytics-panel {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.analytics-flow {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.flow-chart {
+  width: 100%;
+  min-height: 8.25rem;
+  overflow: visible;
+}
+
+.flow-chart text {
+  fill: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.flow-in { fill: var(--up); }
+.flow-out { fill: var(--down); }
+
+.flow-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.flow-key span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.flow-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; }
+.flow-dot-in { background: var(--up); }
+.flow-dot-out { background: var(--down); }
+
+.analytics-breakdowns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.analytics-breakdown { min-width: 0; }
+.analytics-breakdown h3 { margin-bottom: 0.7rem; }
+.analytics-table { font-size: 0.75rem; }
+.analytics-table th { width: 100%; text-transform: none; letter-spacing: 0; }
+.analytics-table th span:first-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analytics-table td { width: 1%; white-space: nowrap; text-align: right; }
+.analytics-bar { display: block; height: 3px; margin-top: 0.35rem; background: var(--glass-border); border-radius: 99px; }
+.analytics-bar span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.analytics-empty { margin: 0; color: var(--text-dim); font-size: 0.82rem; }
+
+@media (max-width: 48rem) {
+  .analytics-breakdowns { grid-template-columns: 1fr; gap: 1.25rem; }
+}
