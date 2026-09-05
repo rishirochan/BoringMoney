@@ -31,7 +31,7 @@ type ImportDeps = {
   parse?: (filePath: string) => Promise<ParsedStatement>;
 };
 
-const ALLOWED_EXTS = new Set([".pdf", ".csv"]);
+const ALLOWED_EXTS = new Set([".csv"]);
 
 export function isSupportedFile(fileName: string): boolean {
   return ALLOWED_EXTS.has(path.extname(fileName).toLowerCase());

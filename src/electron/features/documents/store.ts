@@ -136,7 +136,8 @@ function isDocumentRecord(value: unknown): value is DocumentRecord {
     isOptionalString(value.error) &&
     typeof value.transactionCount === "number" &&
     (value.summary === undefined || isStatementSummary(value.summary)) &&
-    (value.validation === undefined || isValidationReport(value.validation))
+    (value.validation === undefined || isValidationReport(value.validation)) &&
+    isOptionalString(value.account)
   );
 }
 
@@ -293,6 +294,84 @@ export async function saveDocument(
   });
 }
 
+export async function renameDocument(
+  vaultDir: string,
+  id: string,
+  fileName: string
+): Promise<DocumentRecord> {
+  assertDocumentId(id);
+  if (!isSafeFileName(fileName) || path.extname(fileName).toLowerCase() !== ".csv") {
+    throw new TypeError("Use a CSV file name without folders");
+  }
+
+  return withManifestLock(vaultDir, async () => {
+    const documents = await readManifest(vaultDir);
+    const index = documents.findIndex((document) => document.id === id);
+    if (index === -1) throw new Error("Statement not found");
+
+    const document = documents[index];
+    if (document.fileName === fileName) return document;
+    if (documents.some((item) => item.fileName.toLowerCase() === fileName.toLowerCase())) {
+      throw new Error("A statement with that name already exists");
+    }
+
+    const source = path.join(vaultDir, document.fileName);
+    const destination = path.join(vaultDir, fileName);
+    try {
+      await fs.copyFile(source, destination, fs.constants.COPYFILE_EXCL);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error("A file with that name already exists");
+      }
+      throw error;
+    }
+
+    const renamed = { ...document, fileName };
+    documents[index] = renamed;
+    try {
+      await writeManifest(vaultDir, documents);
+    } catch (error) {
+      await removeIfPresent(destination);
+      throw error;
+    }
+    await fs.unlink(source);
+    return renamed;
+  });
+}
+
+// Mirrors src/renderer/features/vault/sourceGroups.ts sourceKey: same grouping on both sides.
+export function sourceKey(document: DocumentRecord): string {
+  if (document.account) return document.account;
+  const { summary } = document;
+  if (!summary?.institution && !summary?.accountLast4) return document.id;
+  return [summary.institution, summary.accountKind, summary.accountLast4].filter(Boolean).join(":");
+}
+
+export async function setDocumentAccount(
+  vaultDir: string,
+  id: string,
+  account: string | undefined
+): Promise<DocumentRecord> {
+  assertDocumentId(id);
+  const label = account?.trim();
+  if (label !== undefined && label.length > 64) {
+    throw new TypeError("Account name must be 64 characters or fewer");
+  }
+
+  return withManifestLock(vaultDir, async () => {
+    const documents = await readManifest(vaultDir);
+    const index = documents.findIndex((document) => document.id === id);
+    if (index === -1) throw new Error("Statement not found");
+
+    const updated = { ...documents[index] };
+    if (label) updated.account = label;
+    else delete updated.account;
+    documents[index] = updated;
+    await writeManifest(vaultDir, documents);
+    return updated;
+  });
+}
+
 export async function loadParsed(vaultDir: string, id: string): Promise<ParsedStatement | null> {
   assertDocumentId(id);
   try {
@@ -331,12 +410,43 @@ export async function listTransactions(vaultDir: string): Promise<StoredTransact
       parsed: await loadParsed(vaultDir, document.id),
     }))
   );
-  const transactions = parsedStatements.flatMap(({ document, parsed }) =>
-    (parsed?.transactions ?? []).map((transaction, originalOrder) => ({
-      transaction: { ...transaction, documentId: document.id },
-      originalOrder,
-    }))
-  );
+  // Overlapping statements for one account repeat the shared days, so drop what a
+  // newer statement re-reports. Oldest period first: the earlier statement wins.
+  // ponytail: date|amount|description key, same as validate.ts duplicateIssue. Ceiling:
+  // two exports of one bank that word descriptions differently will not match; if that
+  // bites, normalise the description (or match on referenceNumber) before hashing.
+  const ordered = [...parsedStatements].sort((left, right) => {
+    const leftFrom = left.document.summary?.statementPeriod.from ?? "\uffff";
+    const rightFrom = right.document.summary?.statementPeriod.from ?? "\uffff";
+    if (leftFrom !== rightFrom) return leftFrom < rightFrom ? -1 : 1;
+    return left.document.importedAt - right.document.importedAt;
+  });
+
+  const seenBySource = new Map<string, Map<string, number>>();
+  const transactions: { transaction: StoredTransaction; originalOrder: number }[] = [];
+  for (const { document, parsed } of ordered) {
+    const key = sourceKey(document);
+    const seen = seenBySource.get(key) ?? new Map<string, number>();
+    seenBySource.set(key, seen);
+
+    const local = new Map<string, number>();
+    (parsed?.transactions ?? []).forEach((transaction, originalOrder) => {
+      const txnKey = `${transaction.date}|${transaction.amount}|${transaction.description}`;
+      const count = (local.get(txnKey) ?? 0) + 1;
+      local.set(txnKey, count);
+      // Keep only the occurrences beyond what an earlier statement already contributed,
+      // so a charge genuinely billed twice in one statement survives.
+      if (count > (seen.get(txnKey) ?? 0)) {
+        transactions.push({
+          transaction: { ...transaction, documentId: document.id },
+          originalOrder,
+        });
+      }
+    });
+    for (const [txnKey, count] of local) {
+      seen.set(txnKey, Math.max(seen.get(txnKey) ?? 0, count));
+    }
+  }
 
   transactions.sort((left, right) => {
     if (left.transaction.date !== right.transaction.date) {

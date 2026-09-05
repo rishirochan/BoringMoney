@@ -61,8 +61,7 @@ function parsedStatement(description = "Coffee", amount = -4.5) {
 const fakeParse = async () => parsedStatement();
 
 test("isSupportedFile: extension filter, case-insensitive", () => {
-  assert.equal(isSupportedFile("statement.pdf"), true);
-  assert.equal(isSupportedFile("statement.PDF"), true);
+  assert.equal(isSupportedFile("statement.pdf"), false);
   assert.equal(isSupportedFile("data.csv"), true);
   assert.equal(isSupportedFile("data.CSV"), true);
   assert.equal(isSupportedFile("image.png"), false);
@@ -98,26 +97,26 @@ test("importFiles: one failure doesn't abort the batch; collisions renamed", asy
   const src = await tmpDir();
   const vault = await tmpDir();
 
-  const good1 = path.join(src, "statement.pdf");
+  const good1 = path.join(src, "statement.csv");
   const bad = path.join(src, "malware.exe");
-  await fs.writeFile(good1, "pdf-bytes");
+  await fs.writeFile(good1, "csv-bytes");
   await fs.writeFile(bad, "nope");
   // Pre-seed a same-named file in the vault to force a collision rename.
-  await fs.writeFile(path.join(vault, "statement.pdf"), "existing");
+  await fs.writeFile(path.join(vault, "statement.csv"), "existing");
 
   const results = await importFiles(vault, [good1, bad], { parse: fakeParse });
   assert.equal(results.length, 2);
   assert.equal(results[0].ok, true);
-  assert.equal(results[0].name, "statement (2).pdf");
+  assert.equal(results[0].name, "statement (2).csv");
   assert.equal(results[1].ok, false);
   assert.equal(results[1].error, "unsupported file type");
 
   const files = await listFiles(vault);
   const names = files.map((f) => f.name).sort();
-  assert.deepEqual(names, ["statement (2).pdf", "statement.pdf"]);
+  assert.deepEqual(names, ["statement (2).csv", "statement.csv"]);
   // original vault copy untouched
-  assert.equal(await fs.readFile(path.join(vault, "statement.pdf"), "utf8"), "existing");
-  assert.equal(await fs.readFile(path.join(vault, "statement (2).pdf"), "utf8"), "pdf-bytes");
+  assert.equal(await fs.readFile(path.join(vault, "statement.csv"), "utf8"), "existing");
+  assert.equal(await fs.readFile(path.join(vault, "statement (2).csv"), "utf8"), "csv-bytes");
 });
 
 test("importFiles: same-named files all import", async () => {
@@ -164,7 +163,7 @@ test("importFile: duplicate content is rejected and its copied file is removed",
 test("importFile: parse failure saves a failed record without parsed JSON", async () => {
   const src = await tmpDir();
   const vault = await tmpDir();
-  const srcFile = path.join(src, "broken.pdf");
+  const srcFile = path.join(src, "broken.csv");
   await fs.writeFile(srcFile, "broken statement");
 
   const result = await importFile(vault, srcFile, {
@@ -232,7 +231,7 @@ test("transactions keep provenance and removing a document cascades", async () =
   assert.equal(await loadParsed(vault, first.documentId), null);
 });
 
-test("listFiles: filters to pdf/csv only, reports size and importedAt", async () => {
+test("listFiles: filters to CSV only, reports size and importedAt", async () => {
   const vault = await tmpDir();
   await fs.writeFile(path.join(vault, "a.csv"), "12345");
   await fs.writeFile(path.join(vault, "b.pdf"), "1234567890");
@@ -240,9 +239,8 @@ test("listFiles: filters to pdf/csv only, reports size and importedAt", async ()
 
   const files = await listFiles(vault);
   const byName = Object.fromEntries(files.map((f) => [f.name, f]));
-  assert.equal(Object.keys(byName).length, 2);
+  assert.equal(Object.keys(byName).length, 1);
   assert.equal(byName["a.csv"].size, 5);
-  assert.equal(byName["b.pdf"].size, 10);
   assert.ok(byName["a.csv"].importedAt > 0);
 });
 

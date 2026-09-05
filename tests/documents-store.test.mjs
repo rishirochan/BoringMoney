@@ -15,7 +15,9 @@ import {
   loadParsed,
   newDocumentId,
   removeDocument,
+  renameDocument,
   saveDocument,
+  setDocumentAccount,
 } from "../dist-electron/features/documents/store.js";
 
 async function tmpDir() {
@@ -40,7 +42,7 @@ function documentRecord(index, overrides = {}) {
   };
 }
 
-function parsedStatement(transactions = []) {
+function parsedStatement(transactions = [], summary = {}) {
   return {
     summary: {
       statementPeriod: { from: "2026-01-01", to: "2026-01-31" },
@@ -51,6 +53,7 @@ function parsedStatement(transactions = []) {
       accountKind: "credit_card",
       institution: "Test Bank",
       accountLast4: "1234",
+      ...summary,
     },
     transactions,
     validation: {
@@ -127,6 +130,25 @@ test("upsert replaces a document in place without duplicating its id", async () 
   await saveDocument(vault, updated);
 
   assert.deepEqual(await listDocuments(vault), [updated]);
+});
+
+test("renameDocument renames the CSV without overwriting another file", async () => {
+  const vault = await tmpDir();
+  const record = documentRecord(30, { fileName: "old.csv" });
+  await fs.writeFile(path.join(vault, record.fileName), "transactions");
+  await saveDocument(vault, record, parsedStatement());
+
+  const renamed = await renameDocument(vault, record.id, "new.csv");
+  assert.equal(renamed.fileName, "new.csv");
+  assert.equal(await fs.readFile(path.join(vault, "new.csv"), "utf8"), "transactions");
+  await assert.rejects(fs.access(path.join(vault, "old.csv")));
+  assert.equal((await listDocuments(vault))[0].fileName, "new.csv");
+
+  await fs.writeFile(path.join(vault, "taken.csv"), "keep");
+  await assert.rejects(renameDocument(vault, record.id, "taken.csv"), /already exists/);
+  assert.equal(await fs.readFile(path.join(vault, "taken.csv"), "utf8"), "keep");
+  await assert.rejects(renameDocument(vault, record.id, "../outside.csv"), /without folders/);
+  await assert.rejects(renameDocument(vault, record.id, "statement.pdf"), /CSV file name/);
 });
 
 test("findDuplicate returns the document with the same content hash", async () => {
@@ -298,4 +320,124 @@ test("newDocumentId returns UUIDs and path traversal ids are rejected", async ()
     saveDocument(vault, documentRecord(17, { id: "../../etc" })),
     TypeError
   );
+});
+
+// --- cross-statement dedup -------------------------------------------------
+
+const AUG_EARLY = { statementPeriod: { from: "2026-08-01", to: "2026-08-20" } };
+const AUG_LATE = { statementPeriod: { from: "2026-08-10", to: "2026-08-30" } };
+const SHARED = [transaction("2026-08-15", "Shared Coffee"), transaction("2026-08-18", "Shared Gas", -40)];
+const NO_METADATA = { institution: undefined, accountLast4: undefined, accountKind: "unknown" };
+
+async function saveOverlapping(vault, earlyOverrides = {}, lateOverrides = {}, summary = {}) {
+  const early = documentRecord(40, earlyOverrides);
+  const late = documentRecord(41, lateOverrides);
+  await saveDocument(
+    vault,
+    early,
+    parsedStatement([transaction("2026-08-02", "Early only"), ...SHARED], {
+      ...summary,
+      ...AUG_EARLY,
+    })
+  );
+  await saveDocument(
+    vault,
+    late,
+    parsedStatement([...SHARED, transaction("2026-08-28", "Late only")], {
+      ...summary,
+      ...AUG_LATE,
+    })
+  );
+  return { early, late };
+}
+
+test("overlapping statements for the same account keep the shared rows once", async () => {
+  const vault = await tmpDir();
+  const { early } = await saveOverlapping(vault);
+
+  const transactions = await listTransactions(vault);
+  assert.deepEqual(
+    transactions.map(({ description }) => description),
+    ["Late only", "Shared Gas", "Shared Coffee", "Early only"]
+  );
+  // the surviving copies come from the earlier statement
+  for (const shared of transactions.filter(({ description }) => description.startsWith("Shared"))) {
+    assert.equal(shared.documentId, early.id);
+  }
+});
+
+test("overlapping statements for different accounts are not deduped", async () => {
+  const differentLast4 = await tmpDir();
+  await saveOverlapping(differentLast4, {}, {});
+  // rewrite the late document with another card number
+  const late = documentRecord(41);
+  await saveDocument(
+    differentLast4,
+    late,
+    parsedStatement([...SHARED, transaction("2026-08-28", "Late only")], {
+      ...AUG_LATE,
+      accountLast4: "9999",
+    })
+  );
+  assert.equal((await listTransactions(differentLast4)).length, 6);
+
+  // one labelled account vs an unlabelled one is still two accounts
+  const labelled = await tmpDir();
+  const { late: laterDoc } = await saveOverlapping(labelled);
+  await setDocumentAccount(labelled, laterDoc.id, "Joint card");
+  assert.equal((await listTransactions(labelled)).length, 6);
+});
+
+test("documents with no detected metadata dedupe only when they share an account label", async () => {
+  const vault = await tmpDir();
+  const { early, late } = await saveOverlapping(vault, {}, {}, NO_METADATA);
+  assert.equal((await listTransactions(vault)).length, 6);
+
+  await setDocumentAccount(vault, early.id, "Amex CSV");
+  await setDocumentAccount(vault, late.id, "Amex CSV");
+  assert.deepEqual(
+    (await listTransactions(vault)).map(({ description }) => description),
+    ["Late only", "Shared Gas", "Shared Coffee", "Early only"]
+  );
+});
+
+test("a charge billed twice in one statement survives dedup", async () => {
+  const vault = await tmpDir();
+  const early = documentRecord(42);
+  const late = documentRecord(43);
+  const twice = [transaction("2026-08-15", "Two Lattes"), transaction("2026-08-15", "Two Lattes")];
+  await saveDocument(vault, early, parsedStatement(twice, AUG_EARLY));
+  await saveDocument(
+    vault,
+    late,
+    parsedStatement([transaction("2026-08-15", "Two Lattes")], AUG_LATE)
+  );
+
+  const transactions = await listTransactions(vault);
+  assert.equal(transactions.length, 2);
+  assert.deepEqual(transactions.map(({ documentId }) => documentId), [early.id, early.id]);
+});
+
+test("setDocumentAccount sets, trims, clears, and persists", async () => {
+  const vault = await tmpDir();
+  const record = documentRecord(44);
+  await saveDocument(vault, record, parsedStatement());
+
+  assert.equal((await setDocumentAccount(vault, record.id, "  Chase Sapphire  ")).account, "Chase Sapphire");
+  assert.equal((await listDocuments(vault))[0].account, "Chase Sapphire");
+
+  const cleared = await setDocumentAccount(vault, record.id, "   ");
+  assert.equal("account" in cleared, false);
+  assert.equal("account" in (await listDocuments(vault))[0], false);
+
+  await assert.rejects(setDocumentAccount(vault, record.id, "x".repeat(65)), TypeError);
+  await assert.rejects(setDocumentAccount(vault, uuid(999), "Nope"), /Statement not found/);
+  await assert.rejects(setDocumentAccount(vault, "../../etc", "Nope"), TypeError);
+});
+
+test("manifest records carrying an account label survive validation", async () => {
+  const vault = await tmpDir();
+  const record = documentRecord(45, { account: "Manual label" });
+  await saveDocument(vault, record);
+  assert.deepEqual(await listDocuments(vault), [record]);
 });

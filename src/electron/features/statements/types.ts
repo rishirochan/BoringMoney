@@ -94,6 +94,9 @@ export interface DocumentRecord {
   transactionCount: number;
   summary?: StatementSummary;
   validation?: ValidationReport;
+  // User-assigned account label. Documents sharing a label are treated as the same
+  // account for cross-statement dedup (see sourceKey in features/documents/store.ts).
+  account?: string;
 }
 
 export type StoredTransaction = Transaction & { documentId: string };
