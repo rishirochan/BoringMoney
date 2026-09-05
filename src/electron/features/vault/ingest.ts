@@ -179,7 +179,9 @@ export async function importFiles(
   srcPaths: string[],
   deps?: ImportDeps
 ): Promise<ImportResult[]> {
-  return Promise.all(srcPaths.map((srcPath) => importFile(vaultDir, srcPath, deps)));
+  const results: ImportResult[] = [];
+  for (const srcPath of srcPaths) results.push(await importFile(vaultDir, srcPath, deps));
+  return results;
 }
 
 export async function listFiles(vaultDir: string): Promise<FileEntry[]> {

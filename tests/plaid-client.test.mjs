@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   createLinkToken,
   exchangePublicToken,
+  isTrustedPlaidLinkUrl,
   parsePlaidCredentials,
+  PLAID_LINK_URL,
   removeItem,
 } from "../dist-electron/features/plaid/client.js";
 
@@ -51,4 +53,30 @@ test("uses Plaid's API error message", async () => {
       status: 400,
     });
   await assert.rejects(createLinkToken(credentials, "local-user", fetcher), /bad keys/);
+});
+
+test("times out stalled Plaid requests", async () => {
+  const timeout = AbortSignal.timeout;
+  let timeoutMs;
+  AbortSignal.timeout = (milliseconds) => {
+    timeoutMs = milliseconds;
+    return AbortSignal.abort(new DOMException("timed out", "TimeoutError"));
+  };
+  try {
+    const fetcher = async (_url, init) => {
+      init.signal.throwIfAborted();
+    };
+    await assert.rejects(createLinkToken(credentials, "local-user", fetcher), /timed out/);
+    assert.equal(timeoutMs, 30_000);
+  } finally {
+    AbortSignal.timeout = timeout;
+  }
+});
+
+test("trusts only the Plaid Link document for navigation and callbacks", () => {
+  assert.equal(isTrustedPlaidLinkUrl(`${PLAID_LINK_URL}#token=link-test`), true);
+  assert.equal(isTrustedPlaidLinkUrl("https://example.com/"), false);
+  assert.equal(isTrustedPlaidLinkUrl("boring-money://plaid-link/redirect"), false);
+  assert.equal(isTrustedPlaidLinkUrl("boring-money://plaid-link/?redirect=1"), false);
+  assert.equal(isTrustedPlaidLinkUrl("not a URL"), false);
 });

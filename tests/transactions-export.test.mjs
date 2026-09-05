@@ -36,7 +36,7 @@ test("transactionsToCsv: escapes commas, quotes, and newlines", () => {
         documentId: "doc-2",
         date: "2026-01-02",
         postedDate: "2026-01-03",
-        description: 'ACME "SUPER" STORE, INC',
+        description: 'ACME "SUPER"\nSTORE, INC',
         amount: 1234.5,
         type: "payment",
         referenceNumber: "REF12345678",
@@ -46,7 +46,7 @@ test("transactionsToCsv: escapes commas, quotes, and newlines", () => {
     ],
     sources
   );
-  assert.match(csv, /"ACME ""SUPER"" STORE, INC"/);
+  assert.match(csv, /"ACME ""SUPER""\nSTORE, INC"/);
   assert.match(csv, /2026-01-02,2026-01-03/);
   assert.match(csv, /1234\.50,payment,REF12345678,5000\.00,bofa\.csv/);
 });

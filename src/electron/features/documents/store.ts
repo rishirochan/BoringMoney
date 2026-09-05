@@ -163,17 +163,19 @@ function parsedPath(vaultDir: string, id: string): string {
 }
 
 async function readManifest(vaultDir: string): Promise<DocumentRecord[]> {
+  let raw: string;
   try {
-    const raw = await fs.readFile(manifestPath(vaultDir), "utf8");
-    const manifest = JSON.parse(raw) as unknown;
-    if (!isObject(manifest) || manifest.version !== MANIFEST_VERSION) return [];
-    if (!Array.isArray(manifest.documents)) return [];
-    // Drop only the bad records: rejecting the whole list would make the next save
-    // rewrite the manifest without every other document.
-    return manifest.documents.filter(isDocumentRecord);
-  } catch {
-    return [];
+    raw = await fs.readFile(manifestPath(vaultDir), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
+  const manifest = JSON.parse(raw) as unknown;
+  if (!isObject(manifest) || manifest.version !== MANIFEST_VERSION) return [];
+  if (!Array.isArray(manifest.documents)) return [];
+  // Drop only the bad records: rejecting the whole list would make the next save
+  // rewrite the manifest without every other document.
+  return manifest.documents.filter(isDocumentRecord);
 }
 
 async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {

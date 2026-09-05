@@ -264,6 +264,33 @@ test("UK export: DMY from 25/12/2025 and paid out/in columns", () => {
   assert.equal(salary.type, "payment");
 });
 
+test("DMY preamble dates use the inferred transaction order", () => {
+  const parsed = parseCsvStatement(
+    extractCsvText(
+      [
+        "Statement Period: 01/02/2026 - 03/03/2026",
+        "Date,Description,Amount",
+        "15/02/2026,Coffee,-4.25",
+      ].join("\n"),
+    ),
+  );
+  assert.deepEqual(parsed.summary.statementPeriod, { from: "2026-02-01", to: "2026-03-03" });
+});
+
+test("a later signed balance row does not prove the first amount sign", () => {
+  const parsed = parseCsvStatement(
+    extractCsvText(
+      [
+        "Date,Description,Amount,Balance",
+        "01/01/2026,Payroll,500.00,1500.00",
+        "01/02/2026,Coffee,-5.00,1495.00",
+      ].join("\n"),
+    ),
+  );
+  assert.equal(parsed.summary.openingBalance, null);
+  assert.equal(parsed.validation.checks.balanceReconciles, null);
+});
+
 test("European semicolon export: comma decimals and 1.234,56", () => {
   const parsed = parse("european-semicolon.csv");
   assert.equal(parsed.summary.accountKind, "bank");
@@ -303,7 +330,8 @@ test("newest-first export keeps same-day rows in file order for balance signs", 
     [["MONTHLY FEE", 10], ["DIRECT DEPOSIT", 100], ["COFFEE SHOP", -5]],
   );
   assert.equal(parsed.summary.closingBalance, 995);
-  assert.equal(parsed.validation.checks.balanceReconciles, true);
+  assert.equal(parsed.summary.openingBalance, null);
+  assert.equal(parsed.validation.checks.balanceReconciles, null);
 });
 
 test("preamble-only file: zero transactions, no throw, ok false", () => {

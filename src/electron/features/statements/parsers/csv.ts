@@ -38,6 +38,7 @@ type DraftRow = {
   postedDate?: string;
   description: string;
   amount: number;
+  hasExplicitSign: boolean;
   typeHint?: string;
   referenceNumber?: string;
   balance?: number;
@@ -636,13 +637,18 @@ function singleAmount(row: string[], columns: ColumnMap, decimal: Decimal): numb
   return parseCellAmount(row[columns.amount] ?? "", decimal);
 }
 
+function typeHintSign(hint: string | undefined): -1 | 0 | 1 {
+  const token = normalizeLabel(hint ?? "");
+  if (HINT_DEBIT.has(token) || /\bdebit\b/.test(token)) return -1;
+  if (HINT_CREDIT.has(token) || /\bcredit\b/.test(token)) return 1;
+  return 0;
+}
+
 function applyTypeHintSign(amount: number, hint: string | undefined): number {
-  if (!hint) return amount;
-  const token = hint.trim().toLowerCase();
+  const sign = typeHintSign(hint);
+  if (sign === 0) return amount;
   const magnitude = Math.abs(amount);
-  if (HINT_DEBIT.has(token)) return -magnitude;
-  if (HINT_CREDIT.has(token)) return magnitude;
-  return amount;
+  return sign * magnitude;
 }
 
 function combineDescription(row: string[], columns: ColumnMap): string {
@@ -789,6 +795,10 @@ export function parseCsvStatement(doc: ExtractedCsv, opts?: { fileName?: string 
         ...(posted ? { postedDate: posted.iso } : {}),
         description: combineDescription(row, columns),
         amount,
+        hasExplicitSign:
+          usedDebitCredit ||
+          printed <= 0 ||
+          typeHintSign(hint) !== 0,
         ...(hint?.trim() ? { typeHint: hint } : {}),
         ...(reference ? { referenceNumber: reference } : {}),
         ...(balance !== null ? { balance } : {}),
@@ -809,7 +819,10 @@ export function parseCsvStatement(doc: ExtractedCsv, opts?: { fileName?: string 
     return newestFirst ? right.sourceIndex - left.sourceIndex : left.sourceIndex - right.sourceIndex;
   });
 
-  if (!usedDebitCredit && columns.balance !== undefined) applyBalanceSigns(drafts);
+  const firstSignResolved = usedDebitCredit || drafts[0]?.hasExplicitSign === true;
+  if (!usedDebitCredit && columns.balance !== undefined) {
+    applyBalanceSigns(drafts);
+  }
   const flipped =
     !usedDebitCredit &&
     shouldFlipSigns(drafts, looksLikeCardForFlip(header, fileName, resolvedInstitution?.name));
@@ -819,13 +832,13 @@ export function parseCsvStatement(doc: ExtractedCsv, opts?: { fileName?: string 
 
   const transactions = drafts.map((draft) => toTransaction(draft, accountKind));
   const totals = computedTotals(transactions);
-  const printedPeriod = findDateRange(joinRows(preamble));
+  const printedPeriod = findDateRange(joinRows(preamble), order);
   const dates = transactions.map((txn) => txn.date);
   const openingFromPreamble = findOpeningBalance(preamble, decimal);
   const first = transactions[0];
   const last = transactions[transactions.length - 1];
   const openingFromBalance =
-    first?.balance !== undefined ? round2(first.balance - first.amount) : null;
+    first?.balance !== undefined && firstSignResolved ? round2(first.balance - first.amount) : null;
   const accountLast4 = findAccountLast4(joinRows(preamble));
   const summary: StatementSummary = {
     statementPeriod: printedPeriod ?? (dates.length > 0 ? minMaxDates(dates) : emptyPeriod()),

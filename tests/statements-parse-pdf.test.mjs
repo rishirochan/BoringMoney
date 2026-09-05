@@ -183,6 +183,19 @@ test("returns no-transactions validation for a scanned PDF", () => {
   assert.ok(result.validation.issues.some((issue) => issue.code === "no_transactions"));
 });
 
+test("skips oversized transaction lines before matching", () => {
+  const result = parsePdfStatement({
+    kind: "pdf",
+    hasText: true,
+    pages: [[
+      `01/01/2026 ${" ".repeat(2_100)}${"1".repeat(2_100)}x`,
+      "01/02/2026  COFFEE SHOP  4.25",
+    ]],
+  });
+  assert.equal(result.transactions.length, 1);
+  assert.equal(result.transactions[0].description, "COFFEE SHOP");
+});
+
 test("uses balance reconciliation to correct weak default signs", () => {
   const result = parsePdfStatement({
     kind: "pdf",

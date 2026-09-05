@@ -239,12 +239,18 @@ test("listTransactions tags sources and sorts by date, id, then original order",
   );
 });
 
-test("corrupt and unknown-version manifests are treated as empty", async () => {
+test("corrupt manifests fail without being overwritten", async () => {
   const vault = await tmpDir();
   await fs.mkdir(storeFile(vault), { recursive: true });
   await fs.writeFile(storeFile(vault, "documents.json"), "{broken");
-  assert.deepEqual(await listDocuments(vault), []);
+  await assert.rejects(listDocuments(vault), SyntaxError);
+  await assert.rejects(saveDocument(vault, documentRecord(12)), SyntaxError);
+  assert.equal(await fs.readFile(storeFile(vault, "documents.json"), "utf8"), "{broken");
+});
 
+test("unknown manifest versions are treated as empty", async () => {
+  const vault = await tmpDir();
+  await fs.mkdir(storeFile(vault), { recursive: true });
   await fs.writeFile(
     storeFile(vault, "documents.json"),
     JSON.stringify({ version: 2, documents: [documentRecord(12)] })

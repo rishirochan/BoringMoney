@@ -14,7 +14,10 @@ import { fileURLToPath } from "node:url";
 import {
   createLinkToken,
   exchangePublicToken,
+  isTrustedPlaidLinkUrl,
   parsePlaidCredentials,
+  PLAID_LINK_SCHEME,
+  PLAID_LINK_URL,
   removeItem,
   type PlaidCredentials,
   type PlaidEnvironment,
@@ -47,10 +50,10 @@ type LinkSuccess = Omit<PlaidConnection, "itemId" | "accessToken" | "connectedAt
 
 type JsonObject = Record<string, unknown>;
 const STORE_VERSION = 1;
-export const PLAID_LINK_SCHEME = "boring-money";
-const PLAID_LINK_URL = `${PLAID_LINK_SCHEME}://plaid-link/`;
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let activeLinkWindow: BrowserWindow | null = null;
+
+export { PLAID_LINK_SCHEME };
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -247,6 +250,12 @@ function openPlaidLink(parent: BrowserWindow, linkToken: string): Promise<LinkSu
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
     },
   }));
+  linkWindow.webContents.on("will-navigate", (event) => {
+    if (!isTrustedPlaidLinkUrl(event.url)) event.preventDefault();
+  });
+  linkWindow.webContents.on("will-redirect", (event) => {
+    if (event.isMainFrame && !isTrustedPlaidLinkUrl(event.url)) event.preventDefault();
+  });
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -263,7 +272,10 @@ function openPlaidLink(parent: BrowserWindow, linkToken: string): Promise<LinkSu
       if (error) reject(error);
       else resolve(result);
     };
-    const fromLinkWindow = (event: IpcMainEvent) => event.sender === linkWindow.webContents;
+    const fromLinkWindow = (event: IpcMainEvent) =>
+      event.sender === linkWindow.webContents &&
+      event.senderFrame !== null &&
+      isTrustedPlaidLinkUrl(event.senderFrame.url);
     const onSuccess = (event: IpcMainEvent, result: LinkSuccess) => {
       if (fromLinkWindow(event)) finish(result);
     };
@@ -343,9 +355,14 @@ export function registerPlaidHandlers() {
     if (!store) throw new Error("Plaid is not configured.");
     const index = store.connections.findIndex((connection) => connection.itemId === itemId);
     if (index === -1) throw new Error("Plaid connection not found.");
-    await removeItem(store, store.connections[index].accessToken);
+    let remoteRemovalFailed = false;
+    try {
+      await removeItem(store, store.connections[index].accessToken);
+    } catch {
+      remoteRemovalFailed = true;
+    }
     store.connections.splice(index, 1);
     await writeStore(store);
-    return status(store);
+    return { ...status(store), remoteRemovalFailed };
   });
 }

@@ -8,6 +8,7 @@ const SAMPLE_LINE_LIMIT = 20;
 type Delimiter = (typeof DELIMITERS)[number];
 type DelimiterScore = {
   delimiter: Delimiter;
+  lines: number;
   variance: number;
   total: number;
 };
@@ -66,10 +67,11 @@ function scoreDelimiter(delimiter: Delimiter, counts: number[]): DelimiterScore 
   if (total === 0) return undefined;
   const mean = total / counts.length;
   const variance = counts.reduce((sum, count) => sum + (count - mean) ** 2, 0) / counts.length;
-  return { delimiter, variance, total };
+  return { delimiter, lines: counts.filter((count) => count > 0).length, variance, total };
 }
 
 function isBetterScore(candidate: DelimiterScore, current: DelimiterScore): boolean {
+  if (candidate.lines !== current.lines) return candidate.lines > current.lines;
   if (candidate.variance !== current.variance) return candidate.variance < current.variance;
   return candidate.total > current.total;
 }

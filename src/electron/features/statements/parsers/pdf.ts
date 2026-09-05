@@ -66,6 +66,7 @@ type ParseVariant = {
 const EMPTY_SECTION: Section = "none";
 const MAX_CONTINUATION_LENGTH = 80;
 const MAX_CONTINUATION_LINES = 2;
+const MAX_TRANSACTION_LINE_LENGTH = 2_000;
 const DATE_AT_START = new RegExp(`^\\s*(?:${DATE_TOKEN})(?:\\s|$)`, "i");
 const DATE_ANYWHERE = new RegExp(DATE_TOKEN, "gi");
 const DATE_CAPTURE = new RegExp(`(${DATE_TOKEN})`, "i");
@@ -504,6 +505,11 @@ function parseCandidates(
     section = EMPTY_SECTION;
     previous = undefined;
     for (const line of page) {
+      if (line.length > MAX_TRANSACTION_LINE_LENGTH) {
+        skippedLines.push(line);
+        previous = undefined;
+        continue;
+      }
       if (TOTAL_LINE.test(line)) {
         section = EMPTY_SECTION;
         previous = undefined;

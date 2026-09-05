@@ -98,9 +98,14 @@ export default function PlaidSection() {
     setDisconnectingId(connection.id);
     setNotice("");
     try {
-      setStatus(await window.boringmoney.disconnectPlaid(connection.id));
-      setNotice(`${connection.institutionName} is disconnected.`);
-      setIsError(false);
+      const result = await window.boringmoney.disconnectPlaid(connection.id);
+      setStatus(result);
+      setNotice(
+        result.remoteRemovalFailed
+          ? `${connection.institutionName} was removed from this app, but Plaid could not confirm the remote removal. Check your Plaid dashboard.`
+          : `${connection.institutionName} is disconnected.`
+      );
+      setIsError(result.remoteRemovalFailed);
     } catch (error) {
       setNotice(errorMessage(error));
       setIsError(true);

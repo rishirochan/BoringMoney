@@ -128,7 +128,7 @@ interface Window {
     connectPlaid(): Promise<
       { status: "cancelled" } | { status: "connected"; connection: PlaidConnection }
     >;
-    disconnectPlaid(itemId: string): Promise<PlaidStatus>;
+    disconnectPlaid(itemId: string): Promise<PlaidStatus & { remoteRemovalFailed: boolean }>;
     getFilePath(file: File): string;
   };
 }

@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { listTransactions } from "../dist-electron/features/documents/store.js";
+import { listTransactions, loadParsed } from "../dist-electron/features/documents/store.js";
 import { importFile } from "../dist-electron/features/vault/ingest.js";
 
 async function tmpDir() {
@@ -30,6 +30,27 @@ test("CSV import runs the real pipeline and tags transaction provenance", async 
   const transactions = await listTransactions(vault);
   assert.equal(transactions.length, 3);
   assert.ok(transactions.every(({ documentId }) => documentId === result.documentId));
+});
+
+test("running-balance CSV derives signs and opening balance", async () => {
+  const source = await tmpDir();
+  const vault = await tmpDir();
+  const csvPath = path.join(source, "running.csv");
+  await fs.writeFile(
+    csvPath,
+    [
+      "Date,Description,Amount,Balance",
+      "2026-01-03,Coffee,-6.75,1243.25",
+      "2026-01-05,Payroll,500.00,1743.25",
+      "2026-01-08,ATM Withdrawal,100.00,1643.25",
+    ].join("\n")
+  );
+
+  const result = await importFile(vault, csvPath);
+  assert.equal(result.status, "parsed");
+  const parsed = await loadParsed(vault, result.documentId);
+  assert.deepEqual(parsed.transactions.map((txn) => txn.amount), [-6.75, 500, -100]);
+  assert.equal(parsed.summary.openingBalance, 1250);
 });
 
 test("PDF imports are disabled", async () => {

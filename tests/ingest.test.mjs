@@ -160,6 +160,25 @@ test("importFile: duplicate content is rejected and its copied file is removed",
   assert.equal((await listDocuments(vault)).length, 1);
 });
 
+test("importFiles rejects duplicate content in the same batch", async () => {
+  const src = await tmpDir();
+  const vault = await tmpDir();
+  const first = path.join(src, "first.csv");
+  const second = path.join(src, "second.csv");
+  await fs.writeFile(first, "same bytes");
+  await fs.writeFile(second, "same bytes");
+
+  const [imported, duplicate] = await importFiles(vault, [first, second], { parse: fakeParse });
+
+  assert.equal(imported.status, "parsed");
+  assert.deepEqual(duplicate, {
+    name: "second.csv",
+    ok: false,
+    error: "already imported as first.csv",
+  });
+  assert.equal((await listDocuments(vault)).length, 1);
+});
+
 test("importFile: parse failure saves a failed record without parsed JSON", async () => {
   const src = await tmpDir();
   const vault = await tmpDir();

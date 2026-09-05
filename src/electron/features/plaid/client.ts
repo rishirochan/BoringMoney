@@ -1,5 +1,9 @@
 export type PlaidEnvironment = "sandbox" | "production";
 
+export const PLAID_LINK_SCHEME = "boring-money";
+export const PLAID_LINK_URL = `${PLAID_LINK_SCHEME}://plaid-link/`;
+const PLAID_REQUEST_TIMEOUT_MS = 30_000;
+
 export type PlaidCredentials = {
   clientId: string;
   secret: string;
@@ -17,6 +21,16 @@ function requiredString(value: unknown, name: string, maxLength: number): string
     throw new TypeError(`${name} is required.`);
   }
   return value.trim();
+}
+
+export function isTrustedPlaidLinkUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    return url.href === PLAID_LINK_URL;
+  } catch {
+    return false;
+  }
 }
 
 export function parsePlaidCredentials(value: unknown): PlaidCredentials {
@@ -40,6 +54,7 @@ async function plaidPost(
   const response = await fetcher(`https://${credentials.environment}.plaid.com${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(PLAID_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       client_id: credentials.clientId,
       secret: credentials.secret,
