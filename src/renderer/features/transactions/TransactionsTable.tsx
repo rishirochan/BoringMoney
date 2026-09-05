@@ -1,50 +1,54 @@
-import { sourceKey, sourceLabel } from "../vault/sourceGroups";
+import { useEffect, useState } from "react";
+import {
+  accountLabel,
+  transactionCurrency,
+  transactionCategory,
+} from "../../../electron/features/analytics/transactions";
 
 type TransactionsTableProps = {
   documents: DocumentRecord[];
   transactions: StoredTransaction[];
   exporting: boolean;
+  canExport: boolean;
   onExport: () => void;
 };
 
-const MAX_VISIBLE_TRANSACTIONS = 200;
+const PAGE_SIZE = 50;
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" });
-const amountFormatter = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-  signDisplay: "always",
-});
 
 function formatDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00Z`);
   return Number.isNaN(parsed.valueOf()) ? date : dateFormatter.format(parsed);
 }
 
+function formatAmount(amount: number, currency: string | undefined): string {
+  const code = currency ?? "USD";
+  if (!/^[A-Z]{3}$/.test(code)) return `${amount.toLocaleString(undefined, { maximumFractionDigits: 20 })} ${code}`;
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: code, maximumFractionDigits: 20, signDisplay: "always" }).format(amount);
+}
+
 export default function TransactionsTable({
   documents,
   transactions,
   exporting,
+  canExport,
   onExport,
 }: TransactionsTableProps) {
-  const documentById = new Map(documents.map((document) => [document.id, document]));
-  const groupIndex = new Map<string, number>();
-  documents.forEach((document) => {
-    const key = sourceKey(document);
-    if (!groupIndex.has(key)) groupIndex.set(key, groupIndex.size);
-  });
-  const visibleTransactions = transactions.slice(0, MAX_VISIBLE_TRANSACTIONS);
+  const [page, setPage] = useState(0);
+  const pageCount = Math.ceil(transactions.length / PAGE_SIZE);
+  const visibleTransactions = transactions.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  useEffect(() => setPage(0), [transactions]);
 
   return (
     <section className="glass tx-panel" aria-labelledby="transactions-title">
-      <div className="section-heading">
-        <h2 id="transactions-title">Transactions</h2>
+      <div className="section-heading tx-table-heading">
+        <div>
+          <h2 id="transactions-title">Transactions</h2>
+          <p className="tx-table-count">{transactions.length.toLocaleString()} matching activity</p>
+        </div>
         <div className="section-actions">
-          {transactions.length > MAX_VISIBLE_TRANSACTIONS && (
-            <span className="label">
-              Showing {MAX_VISIBLE_TRANSACTIONS} of {transactions.length}
-            </span>
-          )}
-          <button type="button" className="btn" disabled={exporting} onClick={onExport}>
+          <button type="button" className="btn" disabled={exporting || !canExport} onClick={onExport}>
             {exporting ? "Exporting…" : "Export CSV"}
           </button>
         </div>
@@ -56,40 +60,37 @@ export default function TransactionsTable({
             <tr>
               <th scope="col">Date</th>
               <th scope="col">Description</th>
+              <th scope="col">Account</th>
+              <th scope="col">Category</th>
               <th scope="col" className="tx-amount">Amount</th>
-              <th scope="col">Type</th>
+              <th scope="col">Status</th>
             </tr>
           </thead>
           <tbody>
-            {visibleTransactions.map((transaction, index) => {
-              const document = documentById.get(transaction.documentId);
-              const label = document ? sourceLabel(document) : "Unknown source";
-              const key = document ? sourceKey(document) : transaction.documentId;
-              return (
-                <tr
-                  className={`tx-row source-${(groupIndex.get(key) ?? 0) % 6}`}
-                  key={`${transaction.documentId}-${index}`}
-                  title={label}
-                  aria-label={`Source: ${label}`}
-                >
-                  <td className="tx-date num">{formatDate(transaction.date)}</td>
-                  <td className="tx-description">{transaction.description}</td>
-                  <td
-                    className={`tx-amount num ${transaction.amount < 0 ? "is-debit" : "is-credit"}`}
-                  >
-                    {amountFormatter.format(transaction.amount)}
-                  </td>
-                  <td>
-                    <span className="badge">
-                      {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
+            {visibleTransactions.length === 0 ? <tr><td className="tx-no-results" colSpan={6}>No transactions match these filters.</td></tr> : visibleTransactions.map((transaction, index) => (
+              <tr key={`${transaction.documentId}-${transaction.date}-${index}`}>
+                <td className="tx-date num">{formatDate(transaction.date)}</td>
+                <td className="tx-description">
+                  {transaction.merchantName && transaction.merchantName !== transaction.description ? <><span>{transaction.merchantName}</span><span className="tx-raw-description">{transaction.description}</span></> : transaction.description}
+                </td>
+                <td>{accountLabel(transaction, documents)}</td>
+                <td><span className="badge">{transactionCategory(transaction)}</span></td>
+                <td className={`tx-amount num ${transaction.amount < 0 ? "is-debit" : "is-credit"}`}>
+                  {formatAmount(transaction.amount, transactionCurrency(transaction))}
+                </td>
+                <td>{transaction.pending ? <span className="badge is-warn">Pending</span> : <span className="tx-cleared">Cleared</span>}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+      {pageCount > 1 && (
+        <nav className="tx-pagination" aria-label="Transaction pages">
+          <button className="btn" type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button>
+          <span className="label">Page {page + 1} of {pageCount}</span>
+          <button className="btn" type="button" disabled={page + 1 === pageCount} onClick={() => setPage(page + 1)}>Next</button>
+        </nav>
+      )}
     </section>
   );
 }

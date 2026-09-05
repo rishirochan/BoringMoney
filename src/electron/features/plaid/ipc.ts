@@ -22,6 +22,12 @@ import {
   type PlaidCredentials,
   type PlaidEnvironment,
 } from "./client.js";
+import { readVaultPath } from "../vault/ingest.js";
+import {
+  plaidSyncStatus,
+  removePlaidTransactions,
+  syncPlaidTransactions,
+} from "./transactions.js";
 
 type PlaidAccount = {
   id: string;
@@ -147,24 +153,42 @@ async function readStore(): Promise<PlaidStore | null> {
   return store;
 }
 
-function publicConnection(connection: PlaidConnection) {
+function publicConnection(
+  connection: PlaidConnection,
+  sync?: { lastSyncedAt?: number; syncError?: string; transactionCount: number }
+) {
   return {
     id: connection.itemId,
     institutionName: connection.institutionName,
     accounts: connection.accounts,
     connectedAt: connection.connectedAt,
+    lastSyncedAt: sync?.lastSyncedAt,
+    syncError: sync?.syncError,
+    transactionCount: sync?.transactionCount ?? 0,
   };
 }
 
-function status(store: PlaidStore | null) {
+function vaultConfigPath(): string {
+  return path.join(app.getPath("userData"), "vault-config.json");
+}
+
+async function currentVault(): Promise<string | null> {
+  return readVaultPath(vaultConfigPath());
+}
+
+async function status(store: PlaidStore | null, vaultDir?: string | null) {
   if (!store) {
     return { configured: false as const, environment: "sandbox" as PlaidEnvironment, connections: [] };
   }
+  const selectedVault = vaultDir === undefined ? await currentVault() : vaultDir;
+  const sync = selectedVault ? await plaidSyncStatus(selectedVault) : new Map();
   return {
     configured: true as const,
     environment: store.environment,
     clientIdLast4: store.clientId.slice(-4),
-    connections: store.connections.map(publicConnection),
+    connections: store.connections.map((connection) =>
+      publicConnection(connection, sync.get(connection.itemId))
+    ),
   };
 }
 
@@ -341,9 +365,28 @@ export function registerPlaidHandlers() {
       accounts: linked.accounts,
       connectedAt: Date.now(),
     };
-    store.connections.push(connection);
+    const existingIndex = store.connections.findIndex(({ itemId }) => itemId === connection.itemId);
+    if (existingIndex === -1) store.connections.push(connection);
+    else store.connections[existingIndex] = connection;
     await writeStore(store);
-    return { status: "connected" as const, connection: publicConnection(connection) };
+    const vaultDir = await currentVault();
+    if (vaultDir) {
+      await syncPlaidTransactions(vaultDir, store, [connection], connection.itemId);
+    }
+    const sync = vaultDir ? (await plaidSyncStatus(vaultDir)).get(connection.itemId) : undefined;
+    return { status: "connected" as const, connection: publicConnection(connection, sync) };
+  });
+
+  ipcMain.handle("plaid:sync", async (event, itemId: unknown) => {
+    assertMainRenderer(event);
+    if (itemId !== undefined && (typeof itemId !== "string" || !itemId || itemId.length > 512)) {
+      throw new TypeError("Invalid Plaid connection.");
+    }
+    const store = await readStore();
+    if (!store) throw new Error("Plaid is not configured.");
+    const vaultDir = await currentVault();
+    if (!vaultDir) throw new Error("Choose a vault before syncing Plaid.");
+    return syncPlaidTransactions(vaultDir, store, store.connections, itemId);
   });
 
   ipcMain.handle("plaid:disconnect", async (event, itemId: unknown) => {
@@ -363,6 +406,8 @@ export function registerPlaidHandlers() {
     }
     store.connections.splice(index, 1);
     await writeStore(store);
-    return { ...status(store), remoteRemovalFailed };
+    const vaultDir = await currentVault();
+    if (vaultDir) await removePlaidTransactions(vaultDir, itemId);
+    return { ...(await status(store, vaultDir)), remoteRemovalFailed };
   });
 }

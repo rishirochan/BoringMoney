@@ -11,6 +11,7 @@ export default function PlaidSection() {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [isError, setIsError] = useState(false);
   const [clientId, setClientId] = useState("");
@@ -41,15 +42,46 @@ export default function PlaidSection() {
     try {
       const result = await window.boringmoney.connectPlaid();
       if (result.status === "connected") {
-        setStatus(await window.boringmoney.getPlaidStatus());
-        setNotice(`${result.connection.institutionName} is connected.`);
-        setIsError(false);
+        const nextStatus = await window.boringmoney.getPlaidStatus();
+        const connection = nextStatus.connections.find(({ id }) => id === result.connection.id);
+        setStatus(nextStatus);
+        setNotice(
+          connection?.syncError
+            ? `${result.connection.institutionName} is connected. Transaction sync failed: ${connection.syncError}`
+            : `${result.connection.institutionName} is connected with ${connection?.transactionCount ?? 0} transactions.`
+        );
+        setIsError(Boolean(connection?.syncError));
       }
     } catch (error) {
       setNotice(errorMessage(error));
       setIsError(true);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function sync(itemId?: string) {
+    setSyncingId(itemId ?? "all");
+    setNotice("");
+    try {
+      const { results } = await window.boringmoney.syncPlaid(itemId);
+      setStatus(await window.boringmoney.getPlaidStatus());
+      const failures = results.filter(({ error }) => error);
+      const changed = results.reduce(
+        (count, result) => count + result.added + result.modified + result.removed,
+        0
+      );
+      setNotice(
+        failures.length
+          ? failures.map(({ institutionName, error }) => `${institutionName}: ${error}`).join(" ")
+          : `${changed} transaction ${changed === 1 ? "change" : "changes"} synced.`
+      );
+      setIsError(failures.length > 0);
+    } catch (error) {
+      setNotice(errorMessage(error));
+      setIsError(true);
+    } finally {
+      setSyncingId(null);
     }
   }
 
@@ -218,14 +250,19 @@ export default function PlaidSection() {
                 Edit keys
               </button>
             )}
-            <button className="btn btn-primary" type="button" disabled={busy} onClick={connect}>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={busy || syncingId !== null}
+              onClick={connect}
+            >
               {busy ? "Opening Plaid..." : "Connect a bank"}
             </button>
           </div>
         </div>
       )}
 
-      <div className="status" aria-live="polite" aria-busy={busy}>
+      <div className="status" aria-live="polite" aria-busy={busy || syncingId !== null}>
         {notice && <p className={`note ${isError ? "is-warn" : "is-ok"}`}>{notice}</p>}
       </div>
 
@@ -236,6 +273,16 @@ export default function PlaidSection() {
               Connected banks
             </span>
             <span className="num">{status.connections.length}</span>
+            {status.connections.length > 0 && (
+              <button
+                className="btn"
+                type="button"
+                disabled={syncingId !== null}
+                onClick={() => sync()}
+              >
+                {syncingId === "all" ? "Syncing..." : "Sync all"}
+              </button>
+            )}
           </div>
           {status.connections.length === 0 ? (
             <p className="empty">No bank connected yet. Sandbox is the safest place to test.</p>
@@ -255,15 +302,31 @@ export default function PlaidSection() {
                     <span className="src-dim">
                       Connected {dateFormatter.format(connection.connectedAt)}
                     </span>
+                    <span className="src-dim">
+                      {connection.lastSyncedAt
+                        ? `${connection.transactionCount.toLocaleString()} transactions · synced ${dateFormatter.format(connection.lastSyncedAt)}`
+                        : "Transactions have not synced yet"}
+                    </span>
+                    {connection.syncError && <span className="note is-warn">{connection.syncError}</span>}
                   </div>
-                  <button
-                    className="btn btn-danger"
-                    type="button"
-                    disabled={disconnectingId === connection.id}
-                    onClick={() => disconnect(connection)}
-                  >
-                    {disconnectingId === connection.id ? "Disconnecting..." : "Disconnect"}
-                  </button>
+                  <div className="src-actions">
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={syncingId !== null}
+                      onClick={() => sync(connection.id)}
+                    >
+                      {syncingId === connection.id ? "Syncing..." : "Sync"}
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      type="button"
+                      disabled={disconnectingId === connection.id || syncingId !== null}
+                      onClick={() => disconnect(connection)}
+                    >
+                      {disconnectingId === connection.id ? "Disconnecting..." : "Disconnect"}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
