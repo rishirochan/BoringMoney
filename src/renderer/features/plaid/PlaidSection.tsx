@@ -18,6 +18,9 @@ export default function PlaidSection() {
   const [secret, setSecret] = useState("");
   const [environment, setEnvironment] = useState<PlaidEnvironment>("sandbox");
   const [showSecret, setShowSecret] = useState(false);
+  const [nicknameAccountId, setNicknameAccountId] = useState<string | null>(null);
+  const [nickname, setNickname] = useState("");
+  const [savingNickname, setSavingNickname] = useState(false);
 
   useEffect(() => {
     if (!window.boringmoney) {
@@ -147,6 +150,24 @@ export default function PlaidSection() {
   }
 
   const showForm = status?.configured !== true || editing;
+
+  async function saveNickname(event: FormEvent) {
+    event.preventDefault();
+    if (!nicknameAccountId) return;
+    setSavingNickname(true);
+    setNotice("");
+    try {
+      setStatus(await window.boringmoney.setPlaidAccountNickname(nicknameAccountId, nickname));
+      setNicknameAccountId(null);
+      setIsError(false);
+      setNotice(nickname.trim() ? `Account nickname saved. You can ask AI about ${nickname.trim()}.` : "Account nickname removed.");
+    } catch (error) {
+      setNotice(errorMessage(error));
+      setIsError(true);
+    } finally {
+      setSavingNickname(false);
+    }
+  }
 
   return (
     <div className="src-plaid">
@@ -292,13 +313,31 @@ export default function PlaidSection() {
                 <li key={connection.id}>
                   <div className="src-bank-info">
                     <strong>{connection.institutionName}</strong>
-                    {connection.accounts.length > 0 && (
-                      <span className="src-dim">
-                        {connection.accounts
-                          .map((account) => `${account.name}${account.mask ? ` ····${account.mask}` : ""}`)
-                          .join(", ")}
-                      </span>
-                    )}
+                    {connection.accounts.map((account) => (
+                      <div className="src-account-row" key={account.id}>
+                        {nicknameAccountId === account.id ? (
+                          <form className="src-rename src-nickname" onSubmit={saveNickname}>
+                            <input autoFocus aria-label={`Nickname for ${account.name}`} maxLength={64}
+                              placeholder="e.g. Everyday checking" value={nickname} onChange={(event) => setNickname(event.target.value)} />
+                            <button className="btn" disabled={savingNickname}>{savingNickname ? "Saving…" : "Save"}</button>
+                            <button type="button" className="btn" disabled={savingNickname} onClick={() => setNicknameAccountId(null)}>Cancel</button>
+                            <span className="src-hint">Use this name in AI questions. Leave blank to reset.</span>
+                          </form>
+                        ) : (
+                          <>
+                            <span className="src-account-label">
+                              <span>{account.nickname ?? account.name}{account.mask ? ` ····${account.mask}` : ""}</span>
+                              {account.nickname && <span className="src-hint">{account.name}</span>}
+                            </span>
+                            <button type="button" className="btn" disabled={savingNickname}
+                              aria-label={`Set nickname for ${account.nickname ?? account.name}${account.mask ? ` ending ${account.mask}` : ""}`}
+                              onClick={() => { setNicknameAccountId(account.id); setNickname(account.nickname ?? ""); }}>
+                              {account.nickname ? "Edit nickname" : "Nickname"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
                     <span className="src-dim">
                       Connected {dateFormatter.format(connection.connectedAt)}
                     </span>

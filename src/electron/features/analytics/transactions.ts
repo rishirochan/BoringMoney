@@ -42,9 +42,11 @@ export function accountKey(row: StoredTransaction, documents: DocumentRecord[]):
 }
 
 export function accountLabel(row: StoredTransaction, documents: DocumentRecord[]): string {
+  if (row.accountNickname) return row.accountNickname;
   if (row.accountName) return row.accountName;
   const document = documents.find((item) => item.id === row.documentId);
   if (!document) return "Unknown account";
+  if (document.accountNickname) return document.accountNickname;
   if (document.account) return document.account;
   const summary = document.summary;
   const name = summary?.institution ?? (summary?.accountKind === "bank" ? "Bank account" : summary?.accountKind === "credit_card" ? "Credit card" : "");
@@ -92,12 +94,12 @@ function amountUnits(amount: number, scale: number): number {
   return units;
 }
 
-function spendingGroups(rows: StoredTransaction[], label: (row: StoredTransaction) => string, scale: number): Breakdown[] {
+function amountGroups(rows: StoredTransaction[], label: (row: StoredTransaction) => string, scale: number): Breakdown[] {
   const groups = new Map<string, { cents: number; count: number }>();
   for (const row of rows) {
     const key = label(row);
     const value = groups.get(key) ?? { cents: 0, count: 0 };
-    value.cents += amountUnits(-row.amount, scale);
+    value.cents += amountUnits(Math.abs(row.amount), scale);
     value.count++;
     groups.set(key, value);
   }
@@ -110,16 +112,17 @@ export function summarizeTransactions(rows: StoredTransaction[], documents: Docu
   const scale = amountScale(rows);
   let incoming = 0;
   let outgoing = 0;
-  const months = new Map<string, { incoming: number; outgoing: number }>();
+  const months = new Map<string, { incoming: number; outgoing: number; rows: StoredTransaction[] }>();
   for (const row of rows) {
     if (!Number.isFinite(row.amount)) throw new Error("A transaction contains an invalid amount.");
     const cents = amountUnits(row.amount, scale);
     incoming += Math.max(cents, 0);
     outgoing += Math.max(-cents, 0);
     const month = row.date.slice(0, 7);
-    const bucket = months.get(month) ?? { incoming: 0, outgoing: 0 };
+    const bucket = months.get(month) ?? { incoming: 0, outgoing: 0, rows: [] };
     bucket.incoming += Math.max(cents, 0);
     bucket.outgoing += Math.max(-cents, 0);
+    bucket.rows.push(row);
     months.set(month, bucket);
   }
   if (![incoming, outgoing].every(Number.isSafeInteger)) throw new Error("The total exceeds the supported precision.");
@@ -133,11 +136,13 @@ export function summarizeTransactions(rows: StoredTransaction[], documents: Docu
     moneyOut: outgoing / scale,
     net: (incoming - outgoing) / scale,
     spending: spending.reduce((sum, row) => sum + amountUnits(-row.amount, scale), 0) / scale,
-    categories: spendingGroups(spending, transactionCategory, scale),
-    merchants: spendingGroups(spending, (row) => row.merchantName || row.description, scale),
-    accounts: spendingGroups(spending, (row) => accountLabel(row, documents), scale),
+    categories: amountGroups(spending, transactionCategory, scale),
+    merchants: amountGroups(spending, (row) => row.merchantName || row.description, scale),
+    accounts: amountGroups(spending, (row) => accountLabel(row, documents), scale),
     monthly: [...months].sort(([a], [b]) => a.localeCompare(b)).map(([month, value]) => ({
       month, moneyIn: value.incoming / scale, moneyOut: value.outgoing / scale, net: (value.incoming - value.outgoing) / scale,
+      incomingCategories: amountGroups(value.rows.filter((row) => row.amount > 0), transactionCategory, scale),
+      outgoingCategories: amountGroups(value.rows.filter((row) => row.amount < 0), transactionCategory, scale),
     })),
   };
 }

@@ -11,11 +11,16 @@ contextBridge.exposeInMainWorld("boringmoney", {
     ipcRenderer.invoke("documents:rename", id, fileName),
   setDocumentAccount: (id: string, account: string) =>
     ipcRenderer.invoke("documents:set-account", id, account),
+  setSourceNickname: (id: string, nickname: string) =>
+    ipcRenderer.invoke("documents:set-nickname", id, nickname),
+  setPlaidAccountNickname: (id: string, nickname: string) =>
+    ipcRenderer.invoke("plaid:set-nickname", id, nickname),
   deleteDocument: (id: string) => ipcRenderer.invoke("documents:delete", id),
   listTransactions: () => ipcRenderer.invoke("transactions:list"),
   exportTransactions: (filters?: unknown) => ipcRenderer.invoke("transactions:export", filters),
   syncPlaid: (itemId?: string) => ipcRenderer.invoke("plaid:sync", itemId),
   getAiStatus: () => ipcRenderer.invoke("ai:status"),
+  setAiModel: (provider: string, model: string) => ipcRenderer.invoke("ai:set-model", provider, model),
   queryAi: (request: unknown) => ipcRenderer.invoke("ai:query", request),
   cancelAi: (requestId: string) => ipcRenderer.invoke("ai:cancel", requestId),
   getPlaidStatus: () => ipcRenderer.invoke("plaid:status"),

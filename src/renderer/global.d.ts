@@ -40,6 +40,7 @@ type DocumentRecord = {
   error?: string;
   /** User-assigned account label. Statements sharing one are deduped against each other. */
   account?: string;
+  accountNickname?: string;
   transactionCount: number;
   summary?: StatementSummary;
   validation?: ValidationReport;
@@ -77,6 +78,7 @@ type PlaidConnection = {
   accounts: {
     id: string;
     name: string;
+    nickname?: string;
     mask: string | null;
     type: string | null;
     subtype: string | null;
@@ -95,6 +97,7 @@ type PlaidStatus =
 interface Window {
   boringmoney: {
     getAiStatus(): Promise<import("../electron/features/ai/types").AiProviderStatus[]>;
+    setAiModel(provider: import("../electron/features/ai/types").AiProvider, model: string): Promise<import("../electron/features/ai/types").AiProviderStatus[]>;
     queryAi(request: import("../electron/features/ai/types").AiQueryRequest): Promise<import("../electron/features/ai/types").AiQueryResponse>;
     cancelAi(requestId: string): Promise<{ canceled: boolean }>;
     getVaultPath(): Promise<string | null>;
@@ -105,6 +108,8 @@ interface Window {
     getParsed(id: string): Promise<ParsedStatement | null>;
     renameDocument(id: string, fileName: string): Promise<DocumentRecord>;
     setDocumentAccount(id: string, account: string): Promise<DocumentRecord>;
+    setSourceNickname(id: string, nickname: string): Promise<void>;
+    setPlaidAccountNickname(id: string, nickname: string): Promise<PlaidStatus>;
     deleteDocument(id: string): Promise<DocumentRecord | null>;
     listTransactions(): Promise<StoredTransaction[]>;
     exportTransactions(filters?: import("../electron/features/analytics/transactions").TransactionFilters): Promise<

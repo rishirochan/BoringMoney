@@ -173,13 +173,40 @@
   border-left: 3px solid var(--source-color);
   border-radius: var(--radius-sm);
 }
-.src-group-title {
+.src-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.5rem 0.75rem;
+}
+.src-group-title {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--source-color);
+  overflow-wrap: anywhere;
+}
+.src-group-heading .src-rename,
+.src-nickname {
+  flex-wrap: wrap;
+}
+.src-group-heading .src-hint,
+.src-nickname .src-hint {
+  flex-basis: 100%;
+}
+.src-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-block: 0.35rem;
+}
+.src-account-label {
+  display: grid;
+  overflow-wrap: anywhere;
 }
 .src-doc-list li {
   display: grid;

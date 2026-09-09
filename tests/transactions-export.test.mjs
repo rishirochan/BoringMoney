@@ -61,6 +61,17 @@ test("transactionsToCsv: preserves Plaid source, currency and pending status", (
   assert.match(csv, /Checking,EUR,FOOD_AND_DRINK,Yes/);
 });
 
+test("transactionsToCsv: uses and safely escapes account nicknames for statements and Plaid", () => {
+  const transaction = { documentId: "doc-1", date: "2026-01-01", description: "Shop", amount: -12, type: "purchase", rawLine: "" };
+  const csv = transactionsToCsv([
+    { ...transaction, accountNickname: "Everyday, card" },
+    { ...transaction, accountName: "Checking", accountNickname: "+Salary" },
+  ], sources);
+  assert.match(csv, /"Everyday, card",Unknown/);
+  assert.match(csv, /'\+Salary,Unknown/);
+  assert.doesNotMatch(csv, /chase-jan\.pdf|Checking/);
+});
+
 test("transactionsToCsv: untrusted text cannot become a spreadsheet formula", () => {
   const csv = transactionsToCsv([{documentId:"a",date:"2026-01-01",description:'=HYPERLINK("https://example.test")',amount:-12,type:"purchase",rawLine:"",accountName:"+Formula"}],new Map());
   assert.match(csv, /"'=HYPERLINK/);

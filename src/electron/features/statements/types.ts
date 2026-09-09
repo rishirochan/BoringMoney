@@ -97,6 +97,7 @@ export interface DocumentRecord {
   // User-assigned account label. Documents sharing a label are treated as the same
   // account for cross-statement dedup (see sourceKey in features/documents/store.ts).
   account?: string;
+  accountNickname?: string;
 }
 
 export type StoredTransaction = Transaction & {
@@ -104,6 +105,7 @@ export type StoredTransaction = Transaction & {
   source?: "statement" | "plaid";
   accountId?: string;
   accountName?: string;
+  accountNickname?: string;
   category?: string;
   currency?: string;
   pending?: boolean;
