@@ -9,10 +9,39 @@
 }
 
 .flow-chart {
+  display: block;
   width: 100%;
   min-height: 8.25rem;
   overflow: visible;
 }
+
+.flow-chart-container { position: relative; }
+.flow-bar { cursor: pointer; outline: none; }
+.flow-hit-area { fill: transparent; }
+.flow-bar:hover .flow-hit-area { fill: var(--glass); }
+.flow-bar:focus-visible .flow-hit-area { stroke: var(--accent); stroke-width: 1; }
+.flow-detail-anchor { position: absolute; top: 100%; z-index: 2; width: min(20rem, 100%); }
+.flow-detail {
+  max-height: calc(100dvh - var(--flow-top-inset, 8px) - 8px);
+  overflow-y: auto;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--glass-hover);
+  border-radius: var(--radius-sm);
+  background: oklch(0.18 0.008 260);
+  box-shadow: 0 8px 24px oklch(0.08 0.005 260 / 0.35);
+  font-size: 0.78rem;
+}
+.flow-detail strong { display: block; font-size: 0.9rem; }
+.flow-totals { display: grid; gap: 0.2rem; margin: 0.65rem 0; }
+.flow-totals > div, .flow-detail-categories li { display: flex; justify-content: space-between; gap: 0.75rem; }
+.flow-totals dt { color: var(--text-dim); }
+.flow-totals dd { margin: 0; overflow-wrap: anywhere; text-align: right; }
+.flow-detail-heading { margin: 0.7rem 0 0.4rem; padding-top: 0.6rem; border-top: 1px solid var(--glass-border); }
+.flow-detail-heading span { display: block; color: var(--text-dim); font-size: 0.7rem; }
+.flow-detail-categories { display: grid; gap: 0.3rem; margin: 0; padding: 0; list-style: none; }
+.flow-detail-categories li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.flow-detail-categories .num { text-align: right; overflow-wrap: anywhere; }
+.flow-detail-note { margin: 0.55rem 0 0; color: var(--text-dim); font-size: 0.68rem; }
 
 .flow-chart text {
   fill: var(--text-dim);
