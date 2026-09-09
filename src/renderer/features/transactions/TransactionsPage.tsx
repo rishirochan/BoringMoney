@@ -117,8 +117,8 @@ export default function TransactionsPage() {
     [activeFilters, documents, hasInvalidRange, transactions],
   );
   const tableTransactions = useMemo(
-    () => chartSelection ? filterTransactions(filteredTransactions, { pending: "include", ...chartSelection }, documents) : filteredTransactions,
-    [chartSelection, documents, filteredTransactions],
+    () => chartSelection ? filterTransactions(transactions, { ...activeFilters, pending: "include", ...chartSelection }, documents) : filteredTransactions,
+    [activeFilters, chartSelection, documents, filteredTransactions, transactions],
   );
   // A throw here would unmount the whole app, so fall back to an empty summary and say why.
   const summary = useMemo(() => {
@@ -151,7 +151,8 @@ export default function TransactionsPage() {
     setExporting(true);
     setNotice("");
     try {
-      const result = await window.boringmoney.exportTransactions(activeFilters, chartSelection ?? undefined);
+      const exportFilters = chartSelection ? { ...activeFilters, pending: "include" as const } : activeFilters;
+      const result = await window.boringmoney.exportTransactions(exportFilters, chartSelection ?? undefined);
       if (result.ok) {
         setNoticeKind("ok");
         const name = result.path.split(/[/\\]/).pop() ?? result.path;
