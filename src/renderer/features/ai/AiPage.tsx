@@ -108,16 +108,16 @@ export default function AiPage() {
         <label htmlFor="ai-question">What would you like to understand?</label>
         <textarea id="ai-question" rows={3} maxLength={1000} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Show my spending by category for August." disabled={pending} required />
         <div className="ai-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" className="btn" onClick={() => setQuestion(suggestion)} disabled={pending}>{suggestion}</button>)}</div>
-        <div className="ai-scope"><label>From<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} disabled={pending} /></label><label>To<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} disabled={pending} /></label><span className="note">Leave dates empty to use all posted transactions.</span></div>
-        <p className="note ai-privacy">When you ask, transaction details and summaries are sent to the selected AI provider through your signed-in CLI. Your subscription limits apply. Bank credentials and statement files are not included.</p>
-        <div className="ai-submit">{pending ? <button type="button" className="btn" onClick={cancel}>Stop analysis</button> : <button className="btn btn-primary" type="submit" disabled={selected?.state !== "ready" || refreshing || savingModel || !question.trim()}>Analyze transactions</button>}<span className="note">{modelLabel ? `Using ${modelLabel}. ` : ""}Each question starts a new analysis.</span></div>
+        <div className="ai-scope"><label>From<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} disabled={pending} /></label><label>To<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} disabled={pending} /></label></div>
+        <p className="note ai-privacy">Transaction details go to your AI provider. Credentials and statement files stay on this machine.</p>
+        <div className="ai-submit">{pending ? <button type="button" className="btn" onClick={cancel}>Stop analysis</button> : <button className="btn btn-primary" type="submit" disabled={selected?.state !== "ready" || refreshing || savingModel || !question.trim()}>Analyze transactions</button>}{modelLabel && <span className="note">Using {modelLabel}</span>}</div>
       </form>
       <div aria-live="polite">{error && <p className="note is-warn" role="alert">{error}</p>}{pending && <p className="note">Analyzing your transaction history…</p>}</div>
       {response && <section className="glass ai-answer" aria-labelledby="ai-answer-title">
         <p className="label">{response.provider === "codex" ? "Codex" : "Claude"} analysis{response.model ? ` · ${statuses.find((status) => status.provider === response.provider)?.modelOptions.find((model) => model.id === response.model)?.label ?? response.model}` : ""}</p><h2 id="ai-answer-title">{asked}</h2>
         <div className="ai-prose">{response.answer.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
         {response.charts.map((chart: AiChart, index: number) => <AiChartView key={index} chart={chart} />)}
-        <p className="note ai-coverage">Based on {response.coverage.filteredTransactions.toLocaleString()} of {response.coverage.totalTransactions.toLocaleString()} transactions{response.coverage.from && response.coverage.to ? `, ${response.coverage.from} to ${response.coverage.to}` : ""}. {response.coverage.rowsOmitted > 0 ? `${response.coverage.rowsProvided} individual rows were included; the rest are represented in totals.` : "All matching rows were included."} Amounts in different currencies stay separate. Statement currencies are unspecified unless provided.</p>
+        <p className="note ai-coverage">Based on {response.coverage.filteredTransactions.toLocaleString()} of {response.coverage.totalTransactions.toLocaleString()} transactions{response.coverage.from && response.coverage.to ? `, ${response.coverage.from} to ${response.coverage.to}` : ""}{response.coverage.rowsOmitted > 0 ? `. ${response.coverage.rowsProvided.toLocaleString()} sent in full, the rest as totals` : ""}.</p>
       </section>}
       </div>
       <aside className="glass ai-connections" aria-labelledby="ai-connection-title">
@@ -140,18 +140,21 @@ export default function AiPage() {
         </div>
         <div id="ai-provider-panel" role="tabpanel" aria-labelledby={`ai-tab-${provider}`} className="ai-connection-detail" tabIndex={0}>
           {selected && <>
-            <label className="ai-model-label" htmlFor="ai-model">Model for your questions</label>
-            <select id="ai-model" value={selected.model} onChange={(event) => void changeModel(event.target.value)} disabled={pending || refreshing || savingModel} aria-describedby="ai-model-note">
-              {selected.modelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-            </select>
-            <p className="note ai-model-id">{selected.model}</p>
-            <p id="ai-model-note" className="note">Saved separately for each connection. Available models depend on your plan.</p>
             <p className="ai-connection-message">{selected.message}</p>
             {selected.state !== "ready" && <p>Run <code>{selected.loginCommand}</code> in your terminal, then check connections.</p>}
-            <p className="note">{selected.quotaNote}</p>
-            {selected.version && <p className="note">CLI version: {selected.version}</p>}
+            <label className="ai-model-label" htmlFor="ai-model">Model</label>
+            <select id="ai-model" value={selected.model} onChange={(event) => void changeModel(event.target.value)} disabled={pending || refreshing || savingModel}>
+              {selected.modelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+            </select>
+            <p className="note" role="status">{savingModel ? "Saving…" : modelFeedback}</p>
+            {/* ponytail: native <details> keeps the rarely-read lines out of the way */}
+            <details className="ai-connection-more">
+              <summary>Connection details</summary>
+              <p className="note ai-model-id">{selected.model}</p>
+              <p className="note">{selected.quotaNote}</p>
+              {selected.version && <p className="note">CLI version: {selected.version}</p>}
+            </details>
           </>}
-          <p className="note" role="status">{savingModel ? "Saving model…" : modelFeedback}</p>
         </div>
         <button className="btn ai-check-connection" type="button" onClick={refreshStatus} disabled={refreshing || pending || savingModel}>{refreshing ? "Checking…" : "Check connections"}</button>
       </aside>

@@ -21,7 +21,12 @@
 .ai-model-label { display: block; font-size: .8rem; margin-bottom: .4rem; }
 .ai-connection-detail select { width: 100%; }
 .ai-model-id { font-family: var(--font-mono); }
-.ai-connection-detail .ai-connection-message { margin-top: 1.25rem; font-size: .85rem; }
+.ai-connection-detail .ai-connection-message { margin-top: 0; font-size: .85rem; }
+.ai-connection-detail .ai-model-label { margin-top: 1.1rem; color: var(--text-dim); }
+.ai-connection-more { margin-top: 1rem; border-top: 1px solid var(--glass-border); padding-top: .65rem; }
+.ai-connection-more summary { color: var(--text-dim); font-family: var(--font-mono); font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.ai-connection-more summary:hover { color: var(--text); }
+.ai-connection-more p { margin: .5rem 0 0; }
 .ai-check-connection { justify-self: start; }
 .ai-composer > label { font-weight: 500; }
 .ai-composer textarea { width: 100%; resize: vertical; min-height: 6rem; font-family: var(--font-sans); }
@@ -29,7 +34,6 @@
 .ai-suggestions .btn { font-family: var(--font-sans); text-align: left; letter-spacing: 0; }
 .ai-scope { display: flex; align-items: end; gap: 1rem; flex-wrap: wrap; }
 .ai-scope label { display: grid; gap: .3rem; font-size: .8rem; }
-.ai-scope .note { padding-bottom: .4rem; }
 .ai-privacy { max-width: 75ch; }
 .ai-submit { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
 .ai-answer > .label { margin: 0; }
