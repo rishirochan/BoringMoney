@@ -39,7 +39,7 @@ export type PlaidTransaction = {
 export type PlaidTransactionUpdates = {
   added: PlaidTransaction[];
   modified: PlaidTransaction[];
-  removed: { transactionId: string; accountId: string }[];
+  removed: { transactionId: string }[];
   nextCursor: string;
   hasMore: boolean;
 };
@@ -164,7 +164,7 @@ export async function removeItem(
 }
 
 function optionalString(value: unknown, name: string, maxLength: number): string | undefined {
-  if (value === null || value === undefined) return undefined;
+  if (value === null || value === undefined || value === "") return undefined;
   return requiredString(value, name, maxLength);
 }
 
@@ -234,10 +234,8 @@ export async function fetchTransactionUpdates(
     modified: parseTransactionList(payload.modified),
     removed: payload.removed.map((removed) => {
       if (!isObject(removed)) throw new TypeError("Plaid returned invalid removed transactions.");
-      return {
-        transactionId: requiredString(removed.transaction_id, "Plaid transaction ID", 512),
-        accountId: requiredString(removed.account_id, "Plaid account ID", 512),
-      };
+      // ponytail: only transactionId is used downstream; account_id is optional in older sync payloads
+      return { transactionId: requiredString(removed.transaction_id, "Plaid transaction ID", 512) };
     }),
     nextCursor: boundedString(payload.next_cursor, "Plaid cursor", 2048),
     hasMore: payload.has_more,

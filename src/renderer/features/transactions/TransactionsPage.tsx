@@ -103,10 +103,18 @@ export default function TransactionsPage() {
     () => hasInvalidRange ? [] : filterTransactions(transactions, activeFilters, documents),
     [activeFilters, documents, hasInvalidRange, transactions],
   );
-  const summary = useMemo(
-    () => ({ ...summarizeTransactions(filteredTransactions, documents), currency: selectedCurrency }),
-    [documents, filteredTransactions, selectedCurrency],
-  );
+  // A throw here would unmount the whole app, so fall back to an empty summary and say why.
+  const summary = useMemo(() => {
+    try {
+      return { ...summarizeTransactions(filteredTransactions, documents), currency: selectedCurrency, error: "" };
+    } catch (error) {
+      return {
+        ...summarizeTransactions([], documents),
+        currency: selectedCurrency,
+        error: error instanceof Error ? error.message : "Could not summarize these transactions.",
+      };
+    }
+  }, [documents, filteredTransactions, selectedCurrency]);
 
   function changeFilter(change: Partial<TransactionFilters>) {
     setFilters((current) => ({ ...current, ...change }));
@@ -182,6 +190,7 @@ export default function TransactionsPage() {
             </div>
             {hasInvalidRange && <p className="note is-warn">Choose an end date on or after the start date.</p>}
           </section>
+          {summary.error && <p className="note is-warn">{summary.error}</p>}
           <section className="tx-stats" aria-label="Filtered transaction totals">
             {tiles.map((tile) => <div className="glass tx-stat" key={tile.key}><span className={`tx-stat-value num ${tile.tone}`}>{tile.value}</span><span className="label">{tile.label}</span></div>)}
           </section>

@@ -2,6 +2,7 @@ import { constants as fsConstants, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import type { AiProvider, AiProviderStatus } from "./types.js";
 
 const STATUS_TIMEOUT_MS = 5_000;
@@ -109,16 +110,18 @@ function capture(
       options.signal.removeEventListener("abort", onAbort);
       reject(error);
     };
-    const append = (current: string, chunk: Buffer) => {
-      const next = current + chunk.toString("utf8");
+    const outDecoder = new StringDecoder("utf8");
+    const errDecoder = new StringDecoder("utf8");
+    const append = (current: string, text: string) => {
+      const next = current + text;
       if (Buffer.byteLength(next) > MAX_OUTPUT_BYTES) {
         terminate(new ProcessFailure("AI provider returned too much data."));
         return current;
       }
       return next;
     };
-    child.stdout.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
+    child.stdout.on("data", (chunk: Buffer) => { stdout = append(stdout, outDecoder.write(chunk)); });
+    child.stderr.on("data", (chunk: Buffer) => { stderr = append(stderr, errDecoder.write(chunk)); });
     child.on("error", (error: NodeJS.ErrnoException) => {
       fail(new ProcessFailure("AI provider is not installed.", error.code));
     });

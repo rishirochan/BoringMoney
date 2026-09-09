@@ -5,7 +5,7 @@ export default function AiChartView({ chart }: { chart: AiChart }) {
   const id = useId();
   const values = chart.series.flatMap((series) => series.points.map((point) => point.value));
   const max = Math.max(...values.map(Math.abs), 1);
-  const format = (value: number) => value.toLocaleString(undefined, {maximumFractionDigits:20});
+  const format = (value: number) => value.toLocaleString(undefined, {maximumFractionDigits: chart.metric === "count" ? 0 : 2});
   return <figure className="ai-chart" aria-labelledby={id}>
     <figcaption id={id}>{chart.title}</figcaption>
     {chart.series.map((series, index) => <div key={index} className="ai-chart-series">
