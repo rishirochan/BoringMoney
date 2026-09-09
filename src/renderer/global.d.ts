@@ -112,7 +112,7 @@ interface Window {
     setPlaidAccountNickname(id: string, nickname: string): Promise<PlaidStatus>;
     deleteDocument(id: string): Promise<DocumentRecord | null>;
     listTransactions(): Promise<StoredTransaction[]>;
-    exportTransactions(filters?: import("../electron/features/analytics/transactions").TransactionFilters): Promise<
+    exportTransactions(filters?: import("../electron/features/analytics/transactions").TransactionFilters, selection?: import("../electron/features/analytics/transactions").ChartSelection): Promise<
       { ok: true; path: string } | { ok: false; canceled: true }
     >;
     syncPlaid(itemId?: string): Promise<{ results: {itemId: string; institutionName: string; added: number; modified: number; removed: number; transactionCount: number; lastSyncedAt?: number; error?: string}[] }>;

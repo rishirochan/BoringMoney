@@ -105,8 +105,9 @@ export function registerVaultHandlers() {
     return vaultPath ? listAllTransactions(vaultPath) : [];
   });
 
-  ipcMain.handle("transactions:export", async (_event, value: unknown) => {
+  ipcMain.handle("transactions:export", async (_event, value: unknown, selection: unknown) => {
     const filters = value === undefined ? { pending: "include" as const } : validateFilters(value);
+    const chartFilters = selection === undefined ? undefined : validateFilters(selection);
     const vaultPath = await readVaultPath(configPath());
     if (!vaultPath) throw new Error("no vault selected");
     const [transactions, documents] = await Promise.all([
@@ -121,7 +122,9 @@ export function registerVaultHandlers() {
     const sources = new Map(documents.map((document) => [document.id, document.fileName]));
     const temporaryPath = `${result.filePath}.${randomUUID()}.tmp`;
     try {
-      await fs.writeFile(temporaryPath, transactionsToCsv(filterTransactions(transactions, filters, documents), sources), { encoding: "utf8", mode: 0o600 });
+      const filtered = filterTransactions(transactions, filters, documents);
+      const exported = chartFilters ? filterTransactions(filtered, { pending: "include", ...chartFilters }, documents) : filtered;
+      await fs.writeFile(temporaryPath, transactionsToCsv(exported, sources), { encoding: "utf8", mode: 0o600 });
       await fs.rename(temporaryPath, result.filePath);
     } finally {
       await fs.rm(temporaryPath, { force: true });

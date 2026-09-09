@@ -14,6 +14,22 @@ test('inclusive ranges, account/search/category and pending filters apply to the
   assert.throws(() => validateFilters({query:42}), /filter/);
 });
 
+test('chart selections intersect the current table rows and preserve pending choices', () => {
+  const rows = [
+    row('2026-01-03', -12, { merchantName: 'Market', category: 'Food', accountName: 'Checking' }),
+    row('2026-01-04', -9, { merchantName: 'Market', category: 'Food', accountName: 'Checking', pending: true }),
+    row('2026-01-05', -8, { merchantName: 'Market', category: 'Food', accountName: 'Savings', pending: true }),
+    row('2026-01-06', -7, { merchantName: 'Market', category: 'Food', accountName: 'Checking', isTransfer: true }),
+    row('2026-02-01', -6, { merchantName: 'Market', category: 'Food', accountName: 'Checking', pending: true }),
+  ];
+  const baseRows = filterTransactions(rows, { pending: 'include' });
+  const selectedRows = filterTransactions(baseRows, {
+    pending: 'include', month: '2026-01', merchant: 'Market', category: 'Food', accountLabel: 'Checking', direction: 'spending',
+  });
+  assert.deepEqual(selectedRows, [rows[0], rows[1]]);
+  assert.deepEqual(filterTransactions(baseRows, { pending: 'include', month: '2026-01', direction: 'out' }), rows.slice(0, 4));
+});
+
 test('totals use minor units and spending excludes known transfers without labelling inflows income', () => {
   const summary = summarizeTransactions([row('2026-01-01',-.1),row('2026-01-02',-.2),row('2026-01-03',100),row('2026-02-01',-20,{isTransfer:true})]);
   assert.equal(summary.moneyOut,20.3);

@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld("boringmoney", {
     ipcRenderer.invoke("plaid:set-nickname", id, nickname),
   deleteDocument: (id: string) => ipcRenderer.invoke("documents:delete", id),
   listTransactions: () => ipcRenderer.invoke("transactions:list"),
-  exportTransactions: (filters?: unknown) => ipcRenderer.invoke("transactions:export", filters),
+  exportTransactions: (filters?: unknown, selection?: unknown) => ipcRenderer.invoke("transactions:export", filters, selection),
   syncPlaid: (itemId?: string) => ipcRenderer.invoke("plaid:sync", itemId),
   getAiStatus: () => ipcRenderer.invoke("ai:status"),
   setAiSettings: (provider: string, patch: { model?: string; effort?: string }) => ipcRenderer.invoke("ai:set-settings", provider, patch),

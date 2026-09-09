@@ -6,6 +6,7 @@ import {
   summarizeTransactions,
   transactionCurrency,
   transactionCategory,
+  type ChartSelection,
   type TransactionFilters,
 } from "../../../electron/features/analytics/transactions";
 import AnalyticsPanel from "../analytics/AnalyticsPanel";
@@ -43,11 +44,23 @@ function formatMoney(amount: number, currency: string): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 20 }).format(amount);
 }
 
+function chartSelectionLabel(selection: ChartSelection): string {
+  const parts = [
+    selection.month && new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${selection.month}-01T00:00:00Z`)),
+    selection.category,
+    selection.merchant,
+    selection.accountLabel,
+    selection.direction === "in" ? "Money in" : selection.direction === "out" ? "Money out" : selection.direction === "spending" ? "Spending" : undefined,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
 export default function TransactionsPage() {
   const [vault, setVault] = useState<string | null>(null);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [transactions, setTransactions] = useState<StoredTransaction[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>(EMPTY_FILTERS);
+  const [chartSelection, setChartSelection] = useState<ChartSelection | null>(null);
   const [preset, setPreset] = useState<DatePreset>("all");
   const [notice, setNotice] = useState("");
   const [noticeKind, setNoticeKind] = useState<"warn" | "ok">("warn");
@@ -103,6 +116,10 @@ export default function TransactionsPage() {
     () => hasInvalidRange ? [] : filterTransactions(transactions, activeFilters, documents),
     [activeFilters, documents, hasInvalidRange, transactions],
   );
+  const tableTransactions = useMemo(
+    () => chartSelection ? filterTransactions(transactions, { ...activeFilters, pending: "include", ...chartSelection }, documents) : filteredTransactions,
+    [activeFilters, chartSelection, documents, filteredTransactions, transactions],
+  );
   // A throw here would unmount the whole app, so fall back to an empty summary and say why.
   const summary = useMemo(() => {
     try {
@@ -117,10 +134,12 @@ export default function TransactionsPage() {
   }, [documents, filteredTransactions, selectedCurrency]);
 
   function changeFilter(change: Partial<TransactionFilters>) {
+    setChartSelection(null);
     setFilters((current) => ({ ...current, ...change }));
   }
 
   function changePreset(nextPreset: DatePreset) {
+    setChartSelection(null);
     setPreset(nextPreset);
     if (nextPreset !== "custom") {
       const range = presetRange(nextPreset);
@@ -132,11 +151,12 @@ export default function TransactionsPage() {
     setExporting(true);
     setNotice("");
     try {
-      const result = await window.boringmoney.exportTransactions(activeFilters);
+      const exportFilters = chartSelection ? { ...activeFilters, pending: "include" as const } : activeFilters;
+      const result = await window.boringmoney.exportTransactions(exportFilters, chartSelection ?? undefined);
       if (result.ok) {
         setNoticeKind("ok");
         const name = result.path.split(/[/\\]/).pop() ?? result.path;
-        setNotice(`Exported ${filteredTransactions.length} transactions to ${name}.`);
+        setNotice(`Exported ${tableTransactions.length} transactions to ${name}.`);
       }
     } catch (error) {
       setNoticeKind("warn");
@@ -173,7 +193,9 @@ export default function TransactionsPage() {
                 <h1 id="filter-title">Activity</h1>
                 <p className="tx-filter-note">Transfers count as activity but not as spending. Currencies are never mixed.</p>
               </div>
-              <button type="button" className="btn" onClick={() => { setFilters(EMPTY_FILTERS); setPreset("all"); }}>Clear filters</button>
+              <div className="section-actions">
+                <button type="button" className="btn" onClick={() => { setFilters(EMPTY_FILTERS); setChartSelection(null); setPreset("all"); }}>Clear filters</button>
+              </div>
             </div>
             <div className="tx-filter-grid">
               <label>Period
@@ -194,8 +216,9 @@ export default function TransactionsPage() {
           <section className="tx-stats" aria-label="Filtered transaction totals">
             {tiles.map((tile) => <div className="glass tx-stat" key={tile.key}><span className={`tx-stat-value num ${tile.tone}`}>{tile.value}</span><span className="label">{tile.label}</span></div>)}
           </section>
-          <AnalyticsPanel summary={summary} />
-          <TransactionsTable documents={documents} transactions={filteredTransactions} accounts={accounts} exporting={exporting} canExport={!hasInvalidRange} onExport={exportTransactions} />
+          <AnalyticsPanel summary={summary} selectedSelection={chartSelection} onSelect={setChartSelection} />
+          {chartSelection && <div className="section-actions"><span className="label">Chart selection: {chartSelectionLabel(chartSelection)}</span><button type="button" className="btn" onClick={() => setChartSelection(null)}>Clear</button></div>}
+          <TransactionsTable documents={documents} transactions={tableTransactions} accounts={accounts} exporting={exporting} canExport={!hasInvalidRange} onExport={exportTransactions} />
         </>
       )}
     </div>
