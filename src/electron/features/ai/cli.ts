@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
-import type { AiProvider, AiProviderStatus } from "./types.js";
-import { AI_MODELS, DEFAULT_AI_MODELS, validateAiModel, type AiModels } from "./models.js";
+import type { AiEffort, AiProvider, AiProviderStatus, AiSettings } from "./types.js";
+import { AI_EFFORTS, AI_MODELS, DEFAULT_AI_SETTINGS, validateAiEffort, validateAiModel } from "./models.js";
 
 const STATUS_TIMEOUT_MS = 5_000;
 const MAX_OUTPUT_BYTES = 1_000_000;
@@ -23,7 +23,7 @@ const PROVIDERS = {
 } as const;
 
 type ProcessResult = { stdout: string; stderr: string; code: number | null };
-type ConnectionStatus = Omit<AiProviderStatus, "model" | "modelOptions">;
+type ConnectionStatus = Omit<AiProviderStatus, "model" | "modelOptions" | "effort" | "effortOptions">;
 
 class ProcessFailure extends Error {
   constructor(
@@ -229,9 +229,15 @@ export async function assertAiProviderReady(provider: AiProvider): Promise<void>
   if (status.state !== "ready") throw new Error(status.message);
 }
 
-export async function getAiStatus(models: AiModels = DEFAULT_AI_MODELS): Promise<AiProviderStatus[]> {
+export async function getAiStatus(settings: AiSettings = DEFAULT_AI_SETTINGS): Promise<AiProviderStatus[]> {
   const statuses = await Promise.all([providerStatus("codex"), providerStatus("claude")]);
-  return statuses.map((status) => ({ ...status, model: models[status.provider], modelOptions: AI_MODELS[status.provider] }));
+  return statuses.map((status) => ({
+    ...status,
+    model: settings[status.provider].model,
+    modelOptions: AI_MODELS[status.provider],
+    effort: settings[status.provider].effort,
+    effortOptions: [...AI_EFFORTS],
+  }));
 }
 
 function providerFailure(provider: AiProvider, result: ProcessResult): Error {
@@ -284,12 +290,15 @@ const CODEX_DISABLED_FEATURES = [
   "workspace_dependencies",
 ];
 
-export function codexArguments(model: string, schemaPath: string): string[] {
+export function codexArguments(model: string, effort: AiEffort, schemaPath: string): string[] {
   validateAiModel("codex", model);
+  validateAiEffort(effort);
   return [
     "exec",
     "--model",
     model,
+    "--config",
+    `model_reasoning_effort="${effort}"`,
     "--ignore-user-config",
     "--ignore-rules",
     "--strict-config",
@@ -306,12 +315,15 @@ export function codexArguments(model: string, schemaPath: string): string[] {
   ];
 }
 
-export function claudeArguments(model: string, schema: object): string[] {
+export function claudeArguments(model: string, effort: AiEffort, schema: object): string[] {
   validateAiModel("claude", model);
+  validateAiEffort(effort);
   return [
     "-p",
     "--model",
     model,
+    "--effort",
+    effort,
     "--safe-mode",
     "--disable-slash-commands",
     "--no-chrome",
@@ -337,9 +349,11 @@ export async function invokeAiProvider(
   prompt: string,
   schema: object,
   signal: AbortSignal,
-  model: string = DEFAULT_AI_MODELS[provider],
+  model: string = DEFAULT_AI_SETTINGS[provider].model,
+  effort: AiEffort = DEFAULT_AI_SETTINGS[provider].effort,
 ): Promise<unknown> {
   validateAiModel(provider, model);
+  validateAiEffort(effort);
   signal.throwIfAborted();
   await assertAiProviderReady(provider);
   signal.throwIfAborted();
@@ -349,8 +363,8 @@ export async function invokeAiProvider(
     await fs.writeFile(schemaPath, JSON.stringify(schema), { encoding: "utf8", mode: 0o600 });
     const binary = await resolveBinary(provider);
     const args = provider === "codex"
-      ? codexArguments(model, schemaPath)
-      : claudeArguments(model, schema);
+      ? codexArguments(model, effort, schemaPath)
+      : claudeArguments(model, effort, schema);
     const result = await capture(binary, args, { cwd: directory, input: prompt, signal });
     if (result.code !== 0) throw providerFailure(provider, result);
     return structuredOutput(provider, result.stdout);

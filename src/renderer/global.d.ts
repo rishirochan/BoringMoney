@@ -97,7 +97,7 @@ type PlaidStatus =
 interface Window {
   boringmoney: {
     getAiStatus(): Promise<import("../electron/features/ai/types").AiProviderStatus[]>;
-    setAiModel(provider: import("../electron/features/ai/types").AiProvider, model: string): Promise<import("../electron/features/ai/types").AiProviderStatus[]>;
+    setAiSettings(provider: import("../electron/features/ai/types").AiProvider, patch: { model?: string; effort?: import("../electron/features/ai/types").AiEffort }): Promise<import("../electron/features/ai/types").AiProviderStatus[]>;
     queryAi(request: import("../electron/features/ai/types").AiQueryRequest): Promise<import("../electron/features/ai/types").AiQueryResponse>;
     cancelAi(requestId: string): Promise<{ canceled: boolean }>;
     getVaultPath(): Promise<string | null>;

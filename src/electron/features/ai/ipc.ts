@@ -3,11 +3,11 @@ import path from "node:path";
 import { analyzeTransactions, parseAiRequest } from "./analysis.js";
 import { getAiStatus, invokeAiProvider } from "./cli.js";
 import type { RegisterAiHandlersOptions } from "./types.js";
-import { readAiModels, saveAiModel } from "./models.js";
+import { readAiSettings, saveAiSettings } from "./models.js";
 
 const AI_TIMEOUT_MS = 120_000;
 const activeRequests = new Map<string, AbortController>();
-const modelsPath = () => path.join(app.getPath("userData"), "ai-models.json");
+const settingsPath = () => path.join(app.getPath("userData"), "ai-models.json");
 
 function requestId(value: unknown): string {
   if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(value)) {
@@ -17,13 +17,13 @@ function requestId(value: unknown): string {
 }
 
 export function registerAiHandlers(options: RegisterAiHandlersOptions) {
-  ipcMain.handle("ai:status", () => getAiStatus(readAiModels(modelsPath())));
-  ipcMain.handle("ai:set-model", (_event, provider: unknown, model: unknown) => {
-    return getAiStatus(saveAiModel(modelsPath(), provider, model));
+  ipcMain.handle("ai:status", () => getAiStatus(readAiSettings(settingsPath())));
+  ipcMain.handle("ai:set-settings", (_event, provider: unknown, patch: unknown) => {
+    return getAiStatus(saveAiSettings(settingsPath(), provider, patch));
   });
   ipcMain.handle("ai:query", async (_event, value: unknown) => {
     const request = parseAiRequest(value);
-    const model = readAiModels(modelsPath())[request.provider];
+    const { model, effort } = readAiSettings(settingsPath())[request.provider];
     if (activeRequests.has(request.requestId)) throw new Error("That AI request is already running.");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
@@ -37,7 +37,7 @@ export function registerAiHandlers(options: RegisterAiHandlersOptions) {
         request,
         transactions,
         documents,
-        (provider, prompt, schema, signal) => invokeAiProvider(provider, prompt, schema, signal, model),
+        (provider, prompt, schema, signal) => invokeAiProvider(provider, prompt, schema, signal, model, effort),
         controller.signal,
       );
       return { ...response, model };
