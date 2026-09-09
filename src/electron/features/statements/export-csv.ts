@@ -39,7 +39,7 @@ export function transactionsToCsv(
     transaction.type,
     transaction.referenceNumber ?? "",
     transaction.balance !== undefined ? formatAmount(transaction.balance) : "",
-    transaction.accountName ?? sourceByDocumentId.get(transaction.documentId) ?? "",
+    transaction.accountNickname ?? transaction.accountName ?? sourceByDocumentId.get(transaction.documentId) ?? "",
     transactionCurrency(transaction),
     transaction.category ?? "",
     transaction.pending ? "Yes" : "No",

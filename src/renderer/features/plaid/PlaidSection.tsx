@@ -18,6 +18,9 @@ export default function PlaidSection() {
   const [secret, setSecret] = useState("");
   const [environment, setEnvironment] = useState<PlaidEnvironment>("sandbox");
   const [showSecret, setShowSecret] = useState(false);
+  const [nicknameAccountId, setNicknameAccountId] = useState<string | null>(null);
+  const [nickname, setNickname] = useState("");
+  const [savingNickname, setSavingNickname] = useState(false);
 
   useEffect(() => {
     if (!window.boringmoney) {
@@ -148,13 +151,29 @@ export default function PlaidSection() {
 
   const showForm = status?.configured !== true || editing;
 
+  async function saveNickname(event: FormEvent) {
+    event.preventDefault();
+    if (!nicknameAccountId) return;
+    setSavingNickname(true);
+    setNotice("");
+    try {
+      setStatus(await window.boringmoney.setPlaidAccountNickname(nicknameAccountId, nickname));
+      setNicknameAccountId(null);
+      setIsError(false);
+      setNotice(nickname.trim() ? `Account nickname saved. You can ask AI about ${nickname.trim()}.` : "Account nickname removed.");
+    } catch (error) {
+      setNotice(errorMessage(error));
+      setIsError(true);
+    } finally {
+      setSavingNickname(false);
+    }
+  }
+
   return (
     <div className="src-plaid">
       <div className="src-intro">
         <span className="label">Plaid · bring your own keys</span>
-        <p className="src-dim">
-          Your client ID and secret are encrypted by your operating system and sent only to Plaid.
-        </p>
+        <p className="src-dim">Encrypted by your operating system, sent only to Plaid.</p>
       </div>
 
       {showForm ? (
@@ -211,9 +230,7 @@ export default function PlaidSection() {
               <option value="sandbox">Sandbox</option>
               <option value="production">Production</option>
             </select>
-            <span className="src-hint">
-              Sandbox uses test banks. Production connects real accounts and requires Plaid access.
-            </span>
+            <span className="src-hint">Sandbox uses test banks.</span>
           </label>
           <div className="src-actions">
             <button className="btn btn-primary" type="submit" disabled={busy}>
@@ -292,20 +309,38 @@ export default function PlaidSection() {
                 <li key={connection.id}>
                   <div className="src-bank-info">
                     <strong>{connection.institutionName}</strong>
-                    {connection.accounts.length > 0 && (
-                      <span className="src-dim">
-                        {connection.accounts
-                          .map((account) => `${account.name}${account.mask ? ` ····${account.mask}` : ""}`)
-                          .join(", ")}
-                      </span>
-                    )}
+                    {connection.accounts.map((account) => (
+                      <div className="src-account-row" key={account.id}>
+                        {nicknameAccountId === account.id ? (
+                          <form className="src-rename src-nickname" onSubmit={saveNickname}>
+                            <input autoFocus aria-label={`Nickname for ${account.name}`} maxLength={64}
+                              placeholder="e.g. Everyday checking" value={nickname} onChange={(event) => setNickname(event.target.value)} />
+                            <button className="btn" disabled={savingNickname}>{savingNickname ? "Saving…" : "Save"}</button>
+                            <button type="button" className="btn" disabled={savingNickname} onClick={() => setNicknameAccountId(null)}>Cancel</button>
+                            
+                          </form>
+                        ) : (
+                          <>
+                            <span className="src-account-label">
+                              <span>{account.nickname ?? account.name}{account.mask ? ` ····${account.mask}` : ""}</span>
+                              {account.nickname && <span className="src-hint">{account.name}</span>}
+                            </span>
+                            <button type="button" className="btn" disabled={savingNickname}
+                              aria-label={`Rename account ${account.nickname ?? account.name}${account.mask ? ` ending ${account.mask}` : ""}`}
+                              onClick={() => { setNicknameAccountId(account.id); setNickname(account.nickname ?? ""); }}>
+                              Rename
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
                     <span className="src-dim">
-                      Connected {dateFormatter.format(connection.connectedAt)}
-                    </span>
-                    <span className="src-dim">
-                      {connection.lastSyncedAt
-                        ? `${connection.transactionCount.toLocaleString()} transactions · synced ${dateFormatter.format(connection.lastSyncedAt)}`
-                        : "Transactions have not synced yet"}
+                      {[
+                        `Connected ${dateFormatter.format(connection.connectedAt)}`,
+                        connection.lastSyncedAt
+                          ? `${connection.transactionCount.toLocaleString()} transactions · synced ${dateFormatter.format(connection.lastSyncedAt)}`
+                          : "not synced yet",
+                      ].join(" · ")}
                     </span>
                     {connection.syncError && <span className="note is-warn">{connection.syncError}</span>}
                   </div>

@@ -9,6 +9,8 @@ import {
   removeDocument,
   renameDocument,
   setDocumentAccount,
+  setAccountNickname,
+  sourceKey,
 } from "../documents/store.js";
 import { listAllTransactions } from "../plaid/transactions.js";
 import { filterTransactions, validateFilters } from "../analytics/transactions.js";
@@ -89,6 +91,13 @@ export function registerVaultHandlers() {
   ipcMain.handle("documents:set-account", async (_event, id: unknown, account: unknown) => {
     if (typeof account !== "string") throw new Error("invalid arguments");
     return setDocumentAccount(await selectedVault(), documentId(id), account.trim() || undefined);
+  });
+
+  ipcMain.handle("documents:set-nickname", async (_event, id: unknown, nickname: unknown) => {
+    const vaultPath = await selectedVault();
+    const document = await getDocument(vaultPath, documentId(id));
+    if (!document) throw new Error("Statement not found.");
+    await setAccountNickname(vaultPath, `statement:${sourceKey(document)}`, nickname);
   });
 
   ipcMain.handle("transactions:list", async () => {

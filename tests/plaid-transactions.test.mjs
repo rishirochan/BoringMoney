@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { saveDocument } from "../dist-electron/features/documents/store.js";
+import { saveDocument, setAccountNickname } from "../dist-electron/features/documents/store.js";
+import { accountLabel, accountKey, filterTransactions } from "../dist-electron/features/analytics/transactions.js";
+import { buildPlannerPrompt } from "../dist-electron/features/ai/analysis.js";
 import {
   listAllTransactions,
   syncPlaidTransactions,
@@ -62,6 +64,29 @@ async function withVault(run) {
     await rm(vault, { recursive: true, force: true });
   }
 }
+
+test("Plaid nicknames survive sync and flow into search and AI account references", async () => {
+  await withVault(async (vault) => {
+    await syncPlaidTransactions(vault, credentials, [connection], undefined, async () => response(syncPage({
+      added: [plaidTransaction({ pending: false })],
+    })));
+    await setAccountNickname(vault, "plaid:account-one", "Everyday spending");
+    await syncPlaidTransactions(vault, credentials, [connection], undefined, async () => response(syncPage({
+      modified: [plaidTransaction({ pending: false, amount: 20 })],
+    })));
+    const rows = await listAllTransactions(vault);
+    assert.equal(rows[0].amount, -20);
+    assert.equal(accountLabel(rows[0], []), "Everyday spending");
+    assert.equal(accountKey(rows[0], []), "plaid:account-one");
+    assert.equal(filterTransactions(rows, { query: "everyday" }).length, 1);
+    const { prompt } = buildPlannerPrompt({ requestId: "nickname_test", provider: "codex", question: "Show Everyday spending" }, rows, []);
+    assert.match(prompt, /"key":\s*"plaid:account-one"/);
+    assert.match(prompt, /"label":\s*"Everyday spending"/);
+    assert.match(prompt, /"account":\s*"Everyday spending"/);
+    await setAccountNickname(vault, "plaid:account-one", "");
+    assert.match(accountLabel((await listAllTransactions(vault))[0], []), /Test Bank.*Checking/);
+  });
+});
 
 test("syncs every page and merges Plaid with statement transactions without cross-source dedup", async () => {
   await withVault(async (vault) => {

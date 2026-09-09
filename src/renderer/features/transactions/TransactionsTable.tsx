@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  accountKey,
   accountLabel,
   transactionCurrency,
   transactionCategory,
@@ -8,6 +9,8 @@ import {
 type TransactionsTableProps = {
   documents: DocumentRecord[];
   transactions: StoredTransaction[];
+  /** Every account in the vault, sorted, so a row keeps its colour when filters change. */
+  accounts: [key: string, label: string][];
   exporting: boolean;
   canExport: boolean;
   onExport: () => void;
@@ -30,11 +33,13 @@ function formatAmount(amount: number, currency: string | undefined): string {
 export default function TransactionsTable({
   documents,
   transactions,
+  accounts,
   exporting,
   canExport,
   onExport,
 }: TransactionsTableProps) {
   const [page, setPage] = useState(0);
+  const accountColor = new Map(accounts.map(([key], index) => [key, index % 6]));
   const pageCount = Math.ceil(transactions.length / PAGE_SIZE);
   const visibleTransactions = transactions.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -68,12 +73,12 @@ export default function TransactionsTable({
           </thead>
           <tbody>
             {visibleTransactions.length === 0 ? <tr><td className="tx-no-results" colSpan={6}>No transactions match these filters.</td></tr> : visibleTransactions.map((transaction, index) => (
-              <tr key={`${transaction.documentId}-${transaction.date}-${index}`}>
+              <tr className={`tx-row source-${accountColor.get(accountKey(transaction, documents)) ?? 0}`} key={`${transaction.documentId}-${transaction.date}-${index}`}>
                 <td className="tx-date num">{formatDate(transaction.date)}</td>
                 <td className="tx-description">
                   {transaction.merchantName && transaction.merchantName !== transaction.description ? <><span>{transaction.merchantName}</span><span className="tx-raw-description">{transaction.description}</span></> : transaction.description}
                 </td>
-                <td>{accountLabel(transaction, documents)}</td>
+                <td className="tx-account"><i className="tx-account-dot" aria-hidden="true" />{accountLabel(transaction, documents)}</td>
                 <td><span className="badge">{transactionCategory(transaction)}</span></td>
                 <td className={`tx-amount num ${transaction.amount < 0 ? "is-debit" : "is-credit"}`}>
                   {formatAmount(transaction.amount, transactionCurrency(transaction))}

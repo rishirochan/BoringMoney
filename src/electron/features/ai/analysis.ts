@@ -223,7 +223,7 @@ function compactSummary(summary: TransactionSummary) {
     merchants: take(summary.merchants, 50),
     accounts: take(summary.accounts, 30),
     monthly: {
-      items: summary.monthly.slice(-36),
+      items: summary.monthly.slice(-36).map(({ month, moneyIn, moneyOut, net }) => ({ month, moneyIn, moneyOut, net })),
       omitted: Math.max(0, summary.monthly.length - 36),
     },
   };
@@ -241,7 +241,7 @@ function dimensionCatalog(rows: StoredTransaction[], documents: DocumentRecord[]
   };
 }
 
-const WRITING_RULES = `Write like a careful human analyst. Use plain words and varied sentence lengths. Avoid puffery, filler, stock chatbot phrases, decorative headings, emojis, em dashes, and forced lists. State the useful finding first. Do not invent causes, facts, or advice.`;
+const WRITING_RULES = `Write like a careful human analyst. Use plain words and varied sentence lengths. Avoid puffery, filler, stock chatbot phrases, decorative headings, emojis, em dashes, and forced lists. Write prose only: the app draws the chart, so never build tables, aligned columns, bar strings, percentage ladders, or any other text layout of the numbers. Name at most the two or three figures that answer the question and leave the rest to the chart. State the useful finding first. Do not invent causes, facts, or advice.`;
 
 function localDate() {
   const now = new Date();

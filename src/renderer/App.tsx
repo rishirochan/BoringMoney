@@ -32,11 +32,11 @@ export default function App() {
           <a href="#/" aria-current={page === "transactions" ? "page" : undefined}>
             Transactions
           </a>
-          <a href="#/sources" aria-current={page === "sources" ? "page" : undefined}>
-            Sources
-          </a>
           <a href="#/ai" aria-current={page === "ai" ? "page" : undefined}>
             Ask AI
+          </a>
+          <a href="#/sources" aria-current={page === "sources" ? "page" : undefined}>
+            Sources
           </a>
         </nav>
       </header>

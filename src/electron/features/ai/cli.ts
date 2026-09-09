@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
-import type { AiProvider, AiProviderStatus } from "./types.js";
+import type { AiEffort, AiProvider, AiProviderStatus, AiSettings } from "./types.js";
+import { AI_EFFORTS, AI_MODELS, DEFAULT_AI_SETTINGS, validateAiEffort, validateAiModel } from "./models.js";
 
 const STATUS_TIMEOUT_MS = 5_000;
 const MAX_OUTPUT_BYTES = 1_000_000;
@@ -17,11 +18,12 @@ const PROVIDERS = {
   claude: {
     label: "Claude",
     loginCommand: "claude auth login --claudeai",
-    quotaNote: "Uses your Claude subscription allowance. Plan limits and reset windows still apply.",
+    quotaNote: "Uses your Claude sign-in. Model access and limits depend on your plan. Fable may require usage credits.",
   },
 } as const;
 
 type ProcessResult = { stdout: string; stderr: string; code: number | null };
+type ConnectionStatus = Omit<AiProviderStatus, "model" | "modelOptions" | "effort" | "effortOptions">;
 
 class ProcessFailure extends Error {
   constructor(
@@ -150,7 +152,7 @@ function unavailableStatus(
   state: AiProviderStatus["state"],
   message: string,
   version: string | null = null,
-): AiProviderStatus {
+): ConnectionStatus {
   return {
     ...baseStatus(provider),
     state,
@@ -179,7 +181,7 @@ export function parseClaudeAuthStatus(output: string): "subscription" | "other" 
   }
 }
 
-async function providerStatus(provider: AiProvider): Promise<AiProviderStatus> {
+async function providerStatus(provider: AiProvider): Promise<ConnectionStatus> {
   const binary = await resolveBinary(provider);
   const signal = AbortSignal.timeout(STATUS_TIMEOUT_MS);
   let versionResult: ProcessResult;
@@ -227,8 +229,15 @@ export async function assertAiProviderReady(provider: AiProvider): Promise<void>
   if (status.state !== "ready") throw new Error(status.message);
 }
 
-export async function getAiStatus(): Promise<AiProviderStatus[]> {
-  return Promise.all([providerStatus("codex"), providerStatus("claude")]);
+export async function getAiStatus(settings: AiSettings = DEFAULT_AI_SETTINGS): Promise<AiProviderStatus[]> {
+  const statuses = await Promise.all([providerStatus("codex"), providerStatus("claude")]);
+  return statuses.map((status) => ({
+    ...status,
+    model: settings[status.provider].model,
+    modelOptions: AI_MODELS[status.provider],
+    effort: settings[status.provider].effort,
+    effortOptions: [...AI_EFFORTS],
+  }));
 }
 
 function providerFailure(provider: AiProvider, result: ProcessResult): Error {
@@ -238,6 +247,9 @@ function providerFailure(provider: AiProvider, result: ProcessResult): Error {
   }
   if (/auth|login|sign.?in|credential/i.test(output)) {
     return new Error(`Sign in with your ${PROVIDERS[provider].label} subscription and try again.`);
+  }
+  if (/model.*(?:not|unavailable|unsupported|access)|(?:not|unavailable|unsupported).*model/i.test(output)) {
+    return new Error("This model is unavailable for your connection. Choose another model or update your CLI.");
   }
   return new Error(`${PROVIDERS[provider].label} could not answer this question.`);
 }
@@ -278,15 +290,15 @@ const CODEX_DISABLED_FEATURES = [
   "workspace_dependencies",
 ];
 
-async function runCodex(
-  binary: string,
-  cwd: string,
-  prompt: string,
-  schemaPath: string,
-  signal: AbortSignal,
-) {
-  const args = [
+export function codexArguments(model: string, effort: AiEffort, schemaPath: string): string[] {
+  validateAiModel("codex", model);
+  validateAiEffort(effort);
+  return [
     "exec",
+    "--model",
+    model,
+    "--config",
+    `model_reasoning_effort="${effort}"`,
     "--ignore-user-config",
     "--ignore-rules",
     "--strict-config",
@@ -301,18 +313,17 @@ async function runCodex(
     schemaPath,
     "-",
   ];
-  return capture(binary, args, { cwd, input: prompt, signal });
 }
 
-async function runClaude(
-  binary: string,
-  cwd: string,
-  prompt: string,
-  schema: object,
-  signal: AbortSignal,
-) {
-  return capture(binary, [
+export function claudeArguments(model: string, effort: AiEffort, schema: object): string[] {
+  validateAiModel("claude", model);
+  validateAiEffort(effort);
+  return [
     "-p",
+    "--model",
+    model,
+    "--effort",
+    effort,
     "--safe-mode",
     "--disable-slash-commands",
     "--no-chrome",
@@ -330,7 +341,7 @@ async function runClaude(
     "json",
     "--json-schema",
     JSON.stringify(schema),
-  ], { cwd, input: prompt, signal });
+  ];
 }
 
 export async function invokeAiProvider(
@@ -338,7 +349,11 @@ export async function invokeAiProvider(
   prompt: string,
   schema: object,
   signal: AbortSignal,
+  model: string = DEFAULT_AI_SETTINGS[provider].model,
+  effort: AiEffort = DEFAULT_AI_SETTINGS[provider].effort,
 ): Promise<unknown> {
+  validateAiModel(provider, model);
+  validateAiEffort(effort);
   signal.throwIfAborted();
   await assertAiProviderReady(provider);
   signal.throwIfAborted();
@@ -347,9 +362,10 @@ export async function invokeAiProvider(
   try {
     await fs.writeFile(schemaPath, JSON.stringify(schema), { encoding: "utf8", mode: 0o600 });
     const binary = await resolveBinary(provider);
-    const result = provider === "codex"
-      ? await runCodex(binary, directory, prompt, schemaPath, signal)
-      : await runClaude(binary, directory, prompt, schema, signal);
+    const args = provider === "codex"
+      ? codexArguments(model, effort, schemaPath)
+      : claudeArguments(model, effort, schema);
+    const result = await capture(binary, args, { cwd: directory, input: prompt, signal });
     if (result.code !== 0) throw providerFailure(provider, result);
     return structuredOutput(provider, result.stdout);
   } catch (error) {

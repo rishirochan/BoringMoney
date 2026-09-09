@@ -41,6 +41,12 @@
 .src-panel > h3 {
   margin: 0;
 }
+/* ponytail: keeps the short AI panel under Banks, half width; nth-child beats threading a class through */
+@media (min-width: 52.01rem) {
+  .src-grid > section:nth-child(3) {
+    grid-column: 2;
+  }
+}
 
 /* storage folder row */
 .src-folder {
@@ -173,13 +179,50 @@
   border-left: 3px solid var(--source-color);
   border-radius: var(--radius-sm);
 }
-.src-group-title {
+.src-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.5rem 0.75rem;
+}
+.src-group-title {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--source-color);
+  overflow-wrap: anywhere;
+}
+.src-group-heading .src-rename,
+.src-nickname {
+  flex-wrap: wrap;
+}
+.src-group-heading .src-hint,
+.src-nickname .src-hint {
+  flex-basis: 100%;
+}
+.src-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-block: 0.35rem;
+}
+.src-account-label {
+  display: grid;
+  overflow-wrap: anywhere;
+}
+.src-group-title .src-hint,
+.src-account-label .src-hint {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
 }
 .src-doc-list li {
   display: grid;

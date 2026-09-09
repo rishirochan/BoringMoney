@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { listTransactions } from "../documents/store.js";
+import { listAccountNicknames, listTransactions } from "../documents/store.js";
 import { classifyTransaction, cleanDescription } from "../statements/classify.js";
 import type { AccountKind, StoredTransaction } from "../statements/types.js";
 import {
@@ -361,10 +361,15 @@ export async function plaidSyncStatus(
 }
 
 export async function listAllTransactions(vaultDir: string): Promise<StoredTransaction[]> {
-  const [statements, cache] = await Promise.all([listTransactions(vaultDir), readCache(vaultDir)]);
+  const [statements, cache, nicknames] = await Promise.all([
+    listTransactions(vaultDir), readCache(vaultDir), listAccountNicknames(vaultDir),
+  ]);
   const transactions = [
     ...statements.map((transaction) => ({ ...transaction, source: "statement" as const })),
-    ...cache.items.flatMap((item) => item.transactions),
+    ...cache.items.flatMap((item) => item.transactions.map((transaction) => {
+      const accountNickname = nicknames.get(`plaid:${transaction.accountId}`);
+      return accountNickname ? { ...transaction, accountNickname } : transaction;
+    })),
   ];
   return transactions.sort((left, right) => {
     if (left.date !== right.date) return left.date < right.date ? 1 : -1;

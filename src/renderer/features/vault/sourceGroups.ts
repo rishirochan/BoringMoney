@@ -6,6 +6,7 @@ export function sourceKey(document: DocumentRecord): string {
 }
 
 export function sourceLabel(document: DocumentRecord): string {
+  if (document.accountNickname) return document.accountNickname;
   if (document.account) return document.account;
   const { summary } = document;
   const account = summary?.institution ??

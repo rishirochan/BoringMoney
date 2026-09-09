@@ -1,3 +1,4 @@
+import { useId, useState } from "react";
 import type { TransactionSummary } from "../../../electron/features/analytics/transactions";
 import "./analytics.css";
 
@@ -30,7 +31,7 @@ function Breakdown({
 
   return (
     <section className="analytics-breakdown" aria-labelledby={`${title}-title`}>
-      <h3 id={`${title}-title`}>{title} <span className="label">Top {MAX_ROWS}</span></h3>
+      <h3 id={`${title}-title`}>{title}{rows.length > MAX_ROWS && <span className="label"> Top {MAX_ROWS} of {rows.length}</span>}</h3>
       {visibleRows.length ? (
         <table className="analytics-table">
           <caption>Top {title.toLowerCase()} by spending</caption>
@@ -55,8 +56,52 @@ function Breakdown({
   );
 }
 
+type FlowSelection = { month: string; direction: "in" | "out" };
+
+function FlowDetail({ month, direction, currency, id }: {
+  month: TransactionSummary["monthly"][number];
+  direction: FlowSelection["direction"];
+  currency: string;
+  id: string;
+}) {
+  const categories = direction === "in" ? month.incomingCategories : month.outgoingCategories;
+  const count = categories.reduce((sum, row) => sum + row.count, 0);
+  return (
+    <div className="flow-detail" id={id}>
+      <p className="flow-detail-title">
+        <strong>{new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month.month}-01T00:00:00Z`))}</strong>
+        <span className={`flow-detail-direction is-${direction}`}><i className={`flow-dot flow-dot-${direction}`} /> Money {direction}</span>
+      </p>
+      <p className={`flow-detail-amount num is-${direction}`}>{formatMoney(direction === "in" ? month.moneyIn : month.moneyOut, currency)}</p>
+      <dl className="flow-totals">
+        <div><dt>Net change</dt><dd className="num">{formatMoney(month.net, currency)}</dd></div>
+        <div><dt>Transactions</dt><dd className="num">{count.toLocaleString()}</dd></div>
+      </dl>
+      {categories.length ? (
+        <>
+          <p className="flow-detail-heading">By category</p>
+          <ul className="flow-detail-categories">
+            {categories.slice(0, MAX_ROWS).map((row) => <li key={row.label}><span>{row.label}</span><span className="num">{formatMoney(row.amount, currency)}</span></li>)}
+          </ul>
+          {categories.length > MAX_ROWS && <p className="flow-detail-note">+{categories.length - MAX_ROWS} more</p>}
+        </>
+      ) : <p className="analytics-empty">No money {direction} in this month.</p>}
+    </div>
+  );
+}
+
 function MonthlyFlow({ summary }: AnalyticsPanelProps) {
+  // ponytail: hover previews, click/focus pins, latest month is the resting state, so the
+  // panel is always filled and never shifts layout. No floating tooltip to position.
+  const [hovered, setHovered] = useState<FlowSelection | null>(null);
+  const [pinned, setPinned] = useState<FlowSelection | null>(null);
+  const detailId = useId();
   const months = summary.monthly.slice(-6);
+  const fallback: FlowSelection | null = months.length
+    ? { month: months[months.length - 1].month, direction: "out" }
+    : null;
+  const selection = hovered ?? pinned ?? fallback;
+  const selectedMonth = months.find((month) => month.month === selection?.month);
   const maximum = Math.max(
     ...months.flatMap((month) => [month.moneyIn, Math.abs(month.moneyOut)]),
     1,
@@ -71,33 +116,53 @@ function MonthlyFlow({ summary }: AnalyticsPanelProps) {
     <section className="analytics-flow" aria-labelledby="flow-title">
       <div className="section-heading">
         <h2 id="flow-title">Monthly flow</h2>
-        <span className="label">Last 6 months with activity, money in / money out</span>
+        <span className="label">Last 6 months with activity</span>
       </div>
-      {months.length ? (
-        <>
-          <svg className="flow-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Monthly money in and money out">
-            <title>Monthly flow</title>
-            <desc>{months.map((month) => `${monthLabel(month.month)}: ${formatMoney(month.moneyIn, summary.currency)} in and ${formatMoney(Math.abs(month.moneyOut), summary.currency)} out`).join(". ")}</desc>
-            {months.map((month, index) => {
-              const inHeight = (month.moneyIn / maximum) * chartHeight;
-              const outHeight = (Math.abs(month.moneyOut) / maximum) * chartHeight;
-              const x = index * slot + slot * 0.22;
-              const label = monthLabel(month.month);
-              return (
-                <g key={month.month}>
-                  <title>{`${monthLabel(month.month)}: ${formatMoney(month.moneyIn, summary.currency)} in, ${formatMoney(Math.abs(month.moneyOut), summary.currency)} out`}</title>
-                  <rect className="flow-in" x={x} y={chartHeight - inHeight} width={slot * 0.22} height={inHeight} rx="2" />
-                  <rect className="flow-out" x={x + slot * 0.28} y={chartHeight - outHeight} width={slot * 0.22} height={outHeight} rx="2" />
-                  <text x={index * slot + slot / 2} y={height - 10} textAnchor="middle">{label}</text>
-                </g>
-              );
-            })}
-          </svg>
-          <div className="flow-key" aria-hidden="true">
-            <span><i className="flow-dot flow-dot-in" /> Money in</span>
-            <span><i className="flow-dot flow-dot-out" /> Money out</span>
+      {months.length && selectedMonth && selection ? (
+        <div className="flow-layout">
+          <div className="flow-chart-area" onMouseLeave={() => setHovered(null)} onKeyDown={(event) => {
+            if (event.key === "Escape") { setHovered(null); setPinned(null); }
+          }}>
+            <svg className="flow-chart" viewBox={`0 0 ${width} ${height}`} role="group" aria-label="Monthly money in and money out. Hover or focus a bar for its breakdown.">
+              <title>Monthly flow</title>
+              <desc>{months.map((month) => `${monthLabel(month.month)}: ${formatMoney(month.moneyIn, summary.currency)} in and ${formatMoney(Math.abs(month.moneyOut), summary.currency)} out`).join(". ")}</desc>
+              {months.map((month, index) => {
+                const x = index * slot + slot * 0.22;
+                const label = monthLabel(month.month);
+                return (
+                  <g key={month.month}>
+                    {(["in", "out"] as const).map((direction) => {
+                      const amount = direction === "in" ? month.moneyIn : month.moneyOut;
+                      const barHeight = (amount / maximum) * chartHeight;
+                      const barX = x + (direction === "out" ? slot * 0.28 : 0);
+                      const active = selection.month === month.month && selection.direction === direction;
+                      const select = () => setHovered({ month: month.month, direction });
+                      return <g key={direction} className={active ? "flow-bar is-active" : "flow-bar"} role="button" tabIndex={0}
+                        aria-label={`${label}, money ${direction}: ${formatMoney(amount, summary.currency)}. Show breakdown.`}
+                        aria-describedby={active ? detailId : undefined} aria-pressed={active}
+                        onMouseEnter={select}
+                        onClick={() => { setPinned({ month: month.month, direction }); }}
+                        onFocus={() => { setHovered(null); setPinned({ month: month.month, direction }); }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPinned({ month: month.month, direction }); }
+                        }}>
+                        <rect className="flow-hit-area" x={barX - 2} y={0} width={slot * 0.22 + 4} height={chartHeight + 4} rx="3" />
+                        <rect className={`flow-${direction}`} x={barX} y={chartHeight - barHeight} width={slot * 0.22} height={barHeight} rx="2" />
+                      </g>;
+                    })}
+                    <text x={index * slot + slot / 2} y={height - 10} textAnchor="middle">{label}</text>
+                  </g>
+                );
+              })}
+            </svg>
+            <div className="flow-key">
+              <span><i className="flow-dot flow-dot-in" aria-hidden="true" /> Money in</span>
+              <span><i className="flow-dot flow-dot-out" aria-hidden="true" /> Money out</span>
+              
+            </div>
           </div>
-        </>
+          <FlowDetail month={selectedMonth} direction={selection.direction} currency={summary.currency} id={detailId} />
+        </div>
       ) : (
         <p className="analytics-empty">No dated activity in this view.</p>
       )}

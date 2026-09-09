@@ -8,6 +8,7 @@ type DocumentsListProps = {
   onRemove: (document: DocumentRecord) => void;
   onRename: (document: DocumentRecord, fileName: string) => Promise<boolean>;
   onSetAccount: (document: DocumentRecord, account: string) => Promise<boolean>;
+  onSetNickname: (document: DocumentRecord, nickname: string) => Promise<boolean>;
 };
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -53,21 +54,24 @@ export default function DocumentsList({
   onRemove,
   onRename,
   onSetAccount,
+  onSetNickname,
 }: DocumentsListProps) {
   // ponytail: one form open at a time, so one {id, mode} beats a state per action
-  const [editing, setEditing] = useState<{ id: string; mode: "name" | "account" } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; mode: "name" | "account" | "nickname" } | null>(null);
   const [value, setValue] = useState("");
   const groups = new Map<string, DocumentRecord[]>();
   for (const document of documents) {
     const key = sourceKey(document);
     groups.set(key, [...(groups.get(key) ?? []), document]);
   }
-  const accountOptions = [...new Set(documents.map((document) => sourceLabel(document)))];
+  const accountOptions = [...new Set(documents.map((document) => sourceLabel({ ...document, accountNickname: undefined })))];
 
   async function submit(event: FormEvent, document: DocumentRecord) {
     event.preventDefault();
     const saved =
-      editing?.mode === "account"
+      editing?.mode === "nickname"
+        ? await onSetNickname(document, value)
+        : editing?.mode === "account"
         ? await onSetAccount(document, value.trim())
         : await onRename(document, value);
     if (saved) setEditing(null);
@@ -82,10 +86,32 @@ export default function DocumentsList({
         <ul className="src-groups">
           {[...groups.values()].map((group, colorIndex) => (
             <li className={`src-group source-${colorIndex % 6}`} key={sourceKey(group[0])}>
-              <div className="src-group-title">{sourceLabel(group[0])}</div>
+              <div className="src-group-heading">
+                {editing?.id === group[0].id && editing.mode === "nickname" ? (
+                  <form className="src-rename" onSubmit={(event) => submit(event, group[0])}>
+                    <input autoFocus aria-label={`Nickname for ${sourceLabel(group[0])}`} maxLength={64}
+                      placeholder="e.g. Everyday card" value={value} onChange={(event) => setValue(event.target.value)} />
+                    <button className="btn" disabled={busyId !== null}>{busyId === group[0].id ? "Saving…" : "Save"}</button>
+                    <button type="button" className="btn" disabled={busyId !== null} onClick={() => setEditing(null)}>Cancel</button>
+                    
+                  </form>
+                ) : (
+                  <>
+                    <div className="src-group-title">
+                      {sourceLabel(group[0])}
+                      {group[0].accountNickname && <span className="src-hint">{sourceLabel({ ...group[0], accountNickname: undefined })}</span>}
+                    </div>
+                    <button type="button" className="btn" disabled={busyId !== null}
+                      aria-label={`Rename account ${sourceLabel(group[0])}`}
+                      onClick={() => { setEditing({ id: group[0].id, mode: "nickname" }); setValue(group[0].accountNickname ?? ""); }}>
+                      Rename
+                    </button>
+                  </>
+                )}
+              </div>
               <ul className="src-doc-list">
                 {group.map((document) => {
-                  const isEditing = editing?.id === document.id;
+                  const isEditing = editing?.id === document.id && editing.mode !== "nickname";
                   const isReconciled =
                     document.status === "parsed" &&
                     document.validation?.ok === true &&
@@ -135,7 +161,7 @@ export default function DocumentsList({
                               setValue(document.fileName.replace(/\.csv$/i, ""));
                             }}
                           >
-                            Rename
+                            Rename file
                           </button>
                         )}
                         {!isEditing && (
@@ -171,9 +197,6 @@ export default function DocumentsList({
       )}
       {documents.length > 0 && (
         <>
-          <p className="src-hint">
-            Statements in the same account are checked for overlapping transactions.
-          </p>
           <datalist id="src-account-options">
             {accountOptions.map((option) => <option key={option} value={option} />)}
           </datalist>

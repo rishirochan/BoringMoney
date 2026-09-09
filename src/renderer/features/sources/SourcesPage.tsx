@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import AiConnectionPanel from "../ai/AiConnectionPanel";
 import PlaidSection from "../plaid/PlaidSection";
 import DocumentsList from "../vault/DocumentsList";
 import DropZone from "../vault/DropZone";
@@ -146,13 +147,29 @@ export default function SourcesPage() {
     }
   }
 
+  async function setNickname(document: DocumentRecord, nickname: string): Promise<boolean> {
+    setBusyId(document.id);
+    setNotice("");
+    try {
+      await window.boringmoney.setSourceNickname(document.id, nickname);
+      await refreshData();
+      setNoticeKind("ok");
+      setNotice(nickname.trim() ? `Account nickname saved. You can ask AI about ${nickname.trim()}.` : "Account nickname removed.");
+      return true;
+    } catch (error) {
+      setNoticeKind("warn");
+      setNotice(error instanceof Error ? error.message : "Could not save the nickname.");
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="src-page">
       <div className="src-head">
-        <h2>Sources</h2>
-        <p className="src-dim">
-          Statements you drop in and banks you connect. Everything stays on this machine.
-        </p>
+        <h2>Sources &amp; settings</h2>
+        <p className="src-dim">Everything stays on this machine.</p>
       </div>
 
       <div className="src-grid">
@@ -188,12 +205,17 @@ export default function SourcesPage() {
             onRemove={remove}
             onRename={rename}
             onSetAccount={setAccount}
+            onSetNickname={setNickname}
           />
         </section>
 
         <section className="glass src-panel" aria-labelledby="src-banks-title">
           <h3 id="src-banks-title">Banks</h3>
-          <PlaidSection />
+          <PlaidSection key={vault ?? ""} />
+        </section>
+
+        <section className="glass src-panel" aria-labelledby="src-ai-title">
+          <AiConnectionPanel />
         </section>
       </div>
     </div>

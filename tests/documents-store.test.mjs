@@ -18,6 +18,9 @@ import {
   renameDocument,
   saveDocument,
   setDocumentAccount,
+  setAccountNickname,
+  listAccountNicknames,
+  sourceKey,
 } from "../dist-electron/features/documents/store.js";
 
 async function tmpDir() {
@@ -452,4 +455,35 @@ test("manifest records carrying an account label survive validation", async () =
   const record = documentRecord(45, { account: "Manual label" });
   await saveDocument(vault, record);
   assert.deepEqual(await listDocuments(vault), [record]);
+});
+
+test("account nicknames persist across overlapping and newly imported statements without changing identity", async () => {
+  const vault = await tmpDir();
+  try {
+    await saveOverlapping(vault);
+    const before = await listTransactions(vault);
+    const source = sourceKey((await listDocuments(vault))[0]);
+    const key = `statement:${source}`;
+    await setAccountNickname(vault, key, "  Everyday card  ");
+    await setAccountNickname(vault, "plaid:checking", "Salary account");
+    await saveDocument(vault, documentRecord(46), parsedStatement([transaction("2026-09-01", "New month")]));
+    const documents = await listDocuments(vault);
+    assert.ok(documents.every((document) => sourceKey(document) === source && document.accountNickname === "Everyday card"));
+    assert.equal((await listTransactions(vault)).length, before.length + 1);
+    assert.ok((await listTransactions(vault)).every((row) => row.accountNickname === "Everyday card"));
+    assert.equal((await listAccountNicknames(vault)).get("plaid:checking"), "Salary account");
+    const manifest = JSON.parse(await fs.readFile(storeFile(vault, "documents.json"), "utf8"));
+    assert.ok(manifest.documents.every((document) => !document.account && !document.accountNickname));
+    await assert.rejects(setAccountNickname(vault, key, "x".repeat(65)), /64 characters/);
+    await assert.rejects(setAccountNickname(vault, key, "two\nlines"), /line breaks/);
+    await assert.rejects(setAccountNickname(vault, key, null), TypeError);
+    await setAccountNickname(vault, key, " ");
+    assert.ok((await listDocuments(vault)).every((document) => !document.accountNickname));
+    assert.equal((await listTransactions(vault)).length, before.length + 1);
+    await fs.writeFile(storeFile(vault, "account-nicknames.json"), '{"bad":42}');
+    await assert.rejects(setAccountNickname(vault, key, "Keep old data"), /damaged/);
+    assert.equal(await fs.readFile(storeFile(vault, "account-nicknames.json"), "utf8"), '{"bad":42}');
+  } finally {
+    await fs.rm(vault, { recursive: true, force: true });
+  }
 });

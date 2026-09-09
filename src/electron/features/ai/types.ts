@@ -4,6 +4,10 @@ export type { TransactionFilters };
 
 export type AiProvider = "codex" | "claude";
 
+export type AiEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+export type AiSettings = Record<AiProvider, { model: string; effort: AiEffort }>;
+
 export type AiProviderState =
   | "ready"
   | "not_installed"
@@ -21,6 +25,10 @@ export type AiProviderStatus = {
   loginCommand: string;
   message: string;
   quotaNote: string;
+  model: string;
+  modelOptions: { id: string; label: string }[];
+  effort: AiEffort;
+  effortOptions: { id: AiEffort; label: string }[];
 };
 
 export type AiQueryRequest = {
@@ -53,6 +61,7 @@ export type AiChart = {
 export type AiQueryResponse = {
   requestId: string;
   provider: AiProvider;
+  model?: string;
   answer: string;
   charts: AiChart[];
   coverage: AiCoverage;

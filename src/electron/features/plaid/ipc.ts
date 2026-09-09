@@ -23,6 +23,7 @@ import {
   type PlaidEnvironment,
 } from "./client.js";
 import { readVaultPath } from "../vault/ingest.js";
+import { listAccountNicknames, setAccountNickname } from "../documents/store.js";
 import {
   plaidSyncStatus,
   removePlaidTransactions,
@@ -182,13 +183,15 @@ async function status(store: PlaidStore | null, vaultDir?: string | null) {
   }
   const selectedVault = vaultDir === undefined ? await currentVault() : vaultDir;
   const sync = selectedVault ? await plaidSyncStatus(selectedVault) : new Map();
+  const nicknames = selectedVault ? await listAccountNicknames(selectedVault) : new Map();
   return {
     configured: true as const,
     environment: store.environment,
     clientIdLast4: store.clientId.slice(-4),
-    connections: store.connections.map((connection) =>
-      publicConnection(connection, sync.get(connection.itemId))
-    ),
+    connections: store.connections.map((connection) => ({
+      ...publicConnection(connection, sync.get(connection.itemId)),
+      accounts: connection.accounts.map((account) => ({ ...account, nickname: nicknames.get(`plaid:${account.id}`) })),
+    })),
   };
 }
 
@@ -318,6 +321,18 @@ function openPlaidLink(parent: BrowserWindow, linkToken: string): Promise<LinkSu
 }
 
 export function registerPlaidHandlers() {
+  ipcMain.handle("plaid:set-nickname", async (event, accountId: unknown, nickname: unknown) => {
+    assertMainRenderer(event);
+    const store = await readStore();
+    if (typeof accountId !== "string" || !store?.connections.some((connection) => connection.accounts.some(({ id }) => id === accountId))) {
+      throw new Error("Plaid account not found.");
+    }
+    const vaultDir = await currentVault();
+    if (!vaultDir) throw new Error("Choose a storage folder before naming accounts.");
+    await setAccountNickname(vaultDir, `plaid:${accountId}`, nickname);
+    return status(store, vaultDir);
+  });
+
   ipcMain.handle("plaid:status", async (event) => {
     assertMainRenderer(event);
     return status(await readStore());

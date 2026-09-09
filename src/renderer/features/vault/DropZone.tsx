@@ -35,9 +35,7 @@ export default function DropZone({
           {hasVault ? "Drop CSV statements here" : "No storage folder yet"}
         </span>
         <span className="src-drop-hint">
-          {hasVault
-            ? "CSV files, or click to browse"
-            : "Choose a folder above, or drop files and we'll ask for one"}
+          {hasVault ? "or click to browse" : "Choose a folder above first"}
         </span>
       </button>
       <input

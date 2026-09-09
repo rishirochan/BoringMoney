@@ -171,7 +171,7 @@ export default function TransactionsPage() {
             <div className="section-heading">
               <div>
                 <h1 id="filter-title">Activity</h1>
-                <p className="tx-filter-note">Known transfers count in activity. Spending excludes them. Unspecified currencies stay separate from known currencies. Filter by account to compare statements with unspecified currency.</p>
+                <p className="tx-filter-note">Transfers count as activity but not as spending. Currencies are never mixed.</p>
               </div>
               <button type="button" className="btn" onClick={() => { setFilters(EMPTY_FILTERS); setPreset("all"); }}>Clear filters</button>
             </div>
@@ -186,7 +186,7 @@ export default function TransactionsPage() {
               <label>Category<select value={filters.category ?? ""} onChange={(event) => changeFilter({ category: event.target.value || undefined })}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
               <label>Currency<select value={selectedCurrency} onChange={(event) => changeFilter({ currency: event.target.value })}>{currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select></label>
               <label>Pending<select value={filters.pending ?? "exclude"} onChange={(event) => changeFilter({ pending: event.target.value as TransactionFilters["pending"] })}><option value="exclude">Exclude pending</option><option value="include">Include pending</option><option value="only">Pending only</option></select></label>
-              <label className="tx-search">Search descriptions and merchants<input type="search" value={filters.query ?? ""} placeholder="Search activity" onChange={(event) => changeFilter({ query: event.target.value || undefined })} /></label>
+              <label className="tx-search">Search<input type="search" value={filters.query ?? ""} placeholder="Description, merchant, or account" onChange={(event) => changeFilter({ query: event.target.value || undefined })} /></label>
             </div>
             {hasInvalidRange && <p className="note is-warn">Choose an end date on or after the start date.</p>}
           </section>
@@ -195,7 +195,7 @@ export default function TransactionsPage() {
             {tiles.map((tile) => <div className="glass tx-stat" key={tile.key}><span className={`tx-stat-value num ${tile.tone}`}>{tile.value}</span><span className="label">{tile.label}</span></div>)}
           </section>
           <AnalyticsPanel summary={summary} />
-          <TransactionsTable documents={documents} transactions={filteredTransactions} exporting={exporting} canExport={!hasInvalidRange} onExport={exportTransactions} />
+          <TransactionsTable documents={documents} transactions={filteredTransactions} accounts={accounts} exporting={exporting} canExport={!hasInvalidRange} onExport={exportTransactions} />
         </>
       )}
     </div>

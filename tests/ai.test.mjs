@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   MAX_CONTEXT_ROWS,
   analyzeTransactions,
@@ -9,9 +12,51 @@ import {
   parseAnalysisPlan,
 } from "../dist-electron/features/ai/analysis.js";
 import {
+  claudeArguments,
+  codexArguments,
   parseClaudeAuthStatus,
   parseCodexAuthStatus,
 } from "../dist-electron/features/ai/cli.js";
+import { DEFAULT_AI_SETTINGS, readAiSettings, saveAiSettings } from "../dist-electron/features/ai/models.js";
+
+test("models and effort persist separately, reject invalid changes, and reach isolated CLI commands", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "boringmoney-model-test-"));
+  const settings = path.join(directory, "ai-models.json");
+  try {
+    assert.deepEqual(readAiSettings(settings), DEFAULT_AI_SETTINGS);
+    saveAiSettings(settings, "codex", { model: "gpt-5.6-luna" });
+    saveAiSettings(settings, "claude", { model: "claude-sonnet-5", effort: "max" });
+    assert.deepEqual(readAiSettings(settings), {
+      codex: { model: "gpt-5.6-luna", effort: DEFAULT_AI_SETTINGS.codex.effort },
+      claude: { model: "claude-sonnet-5", effort: "max" },
+    });
+    const saved = readFileSync(settings, "utf8");
+    assert.throws(() => saveAiSettings(settings, "codex", { model: "claude-sonnet-5" }), /Choose a model/);
+    assert.throws(() => saveAiSettings(settings, "__proto__", { model: "gpt-5.6-luna" }), /Unknown AI provider/);
+    assert.throws(() => saveAiSettings(settings, "claude", { model: "--dangerously-skip-permissions" }), /Choose a model/);
+    assert.throws(() => saveAiSettings(settings, "claude", { effort: "--dangerously-skip-permissions" }), /intelligence level/);
+    assert.equal(readFileSync(settings, "utf8"), saved);
+    assert.deepEqual(readdirSync(directory), ["ai-models.json"]);
+    // Legacy files stored a bare model string per provider.
+    writeFileSync(settings, JSON.stringify({ codex: "gpt-5.5", claude: "claude-opus-5" }));
+    assert.deepEqual(readAiSettings(settings).codex, { model: "gpt-5.5", effort: DEFAULT_AI_SETTINGS.codex.effort });
+    const codex = codexArguments("gpt-5.6-luna", "high", "/tmp/schema.json");
+    const claude = claudeArguments("claude-sonnet-5", "max", { type: "object" });
+    assert.equal(codex[codex.indexOf("--model") + 1], "gpt-5.6-luna");
+    assert.equal(codex[codex.indexOf("--config") + 1], 'model_reasoning_effort="high"');
+    assert.equal(claude[claude.indexOf("--model") + 1], "claude-sonnet-5");
+    assert.equal(claude[claude.indexOf("--effort") + 1], "max");
+    assert.equal(codex[codex.indexOf("--sandbox") + 1], "read-only");
+    assert.ok(codex.includes("--ignore-user-config"));
+    assert.ok(claude.includes("--safe-mode"));
+    assert.equal(claude[claude.indexOf("--tools") + 1], "");
+    writeFileSync(settings, "{broken");
+    assert.throws(() => saveAiSettings(settings, "codex", { model: "gpt-6-astra" }), /Could not read/);
+    assert.equal(readFileSync(settings, "utf8"), "{broken");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 const transaction = (overrides = {}) => ({
   documentId: "plaid",

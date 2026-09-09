@@ -242,7 +242,39 @@ export async function hashFile(filePath: string): Promise<string> {
 }
 
 export async function listDocuments(vaultDir: string): Promise<DocumentRecord[]> {
-  return readManifest(vaultDir);
+  const [documents, nicknames] = await Promise.all([readManifest(vaultDir), listAccountNicknames(vaultDir)]);
+  return documents.map((document) => {
+    const accountNickname = nicknames.get(`statement:${sourceKey(document)}`);
+    return accountNickname ? { ...document, accountNickname } : document;
+  });
+}
+
+export async function listAccountNicknames(vaultDir: string): Promise<Map<string, string>> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(path.join(storePath(vaultDir), "account-nicknames.json"), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Map();
+    throw error;
+  }
+  const value: unknown = JSON.parse(raw);
+  if (!isObject(value) || !Object.values(value).every((label) => typeof label === "string" && label.length <= 64)) {
+    throw new Error("Account nicknames are damaged.");
+  }
+  return new Map(Object.entries(value) as [string, string][]);
+}
+
+export async function setAccountNickname(vaultDir: string, key: string, nickname: unknown): Promise<void> {
+  if (typeof nickname !== "string" || nickname.trim().length > 64 || /[\u0000-\u001f\u007f]/.test(nickname)) {
+    throw new TypeError("Use an account nickname of 64 characters or fewer, without line breaks.");
+  }
+  const label = nickname.trim();
+  await withManifestLock(vaultDir, async () => {
+    const nicknames = await listAccountNicknames(vaultDir);
+    if (label) nicknames.set(key, label);
+    else nicknames.delete(key);
+    await writeJsonAtomic(path.join(storePath(vaultDir), "account-nicknames.json"), Object.fromEntries(nicknames));
+  });
 }
 
 export async function getDocument(vaultDir: string, id: string): Promise<DocumentRecord | null> {
@@ -409,7 +441,7 @@ export async function removeDocument(
 }
 
 export async function listTransactions(vaultDir: string): Promise<StoredTransaction[]> {
-  const documents = await readManifest(vaultDir);
+  const documents = await listDocuments(vaultDir);
   const parsedStatements = await Promise.all(
     documents.map(async (document) => ({
       document,
@@ -444,7 +476,11 @@ export async function listTransactions(vaultDir: string): Promise<StoredTransact
       // so a charge genuinely billed twice in one statement survives.
       if (count > (seen.get(txnKey) ?? 0)) {
         transactions.push({
-          transaction: { ...transaction, documentId: document.id },
+          transaction: {
+            ...transaction,
+            documentId: document.id,
+            ...(document.accountNickname ? { accountNickname: document.accountNickname } : {}),
+          },
           originalOrder,
         });
       }
