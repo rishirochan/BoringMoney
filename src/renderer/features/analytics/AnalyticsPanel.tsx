@@ -1,9 +1,11 @@
 import { useId, useState } from "react";
-import type { TransactionSummary } from "../../../electron/features/analytics/transactions";
+import type { ChartSelection, TransactionSummary } from "../../../electron/features/analytics/transactions";
 import "./analytics.css";
 
 type AnalyticsPanelProps = {
   summary: TransactionSummary;
+  selectedSelection: ChartSelection | null;
+  onSelect: (selection: ChartSelection) => void;
 };
 
 const MAX_ROWS = 5;
@@ -21,10 +23,16 @@ function Breakdown({
   title,
   rows,
   currency,
+  selectedSelection,
+  onSelect,
+  selectionFor,
 }: {
   title: string;
   rows: TransactionSummary["categories"];
   currency: string;
+  selectedSelection: ChartSelection | null;
+  onSelect: (selection: ChartSelection) => void;
+  selectionFor: (label: string) => ChartSelection;
 }) {
   const visibleRows = rows.slice(0, MAX_ROWS);
   const maximum = Math.max(...visibleRows.map((row) => row.amount), 1);
@@ -39,10 +47,17 @@ function Breakdown({
             {visibleRows.map((row) => (
               <tr key={row.label}>
                 <th scope="row">
-                  <span>{row.label}</span>
-                  <span className="analytics-bar" aria-hidden="true">
-                    <span style={{ width: `${(row.amount / maximum) * 100}%` }} />
-                  </span>
+                  <button
+                    type="button"
+                    className="analytics-select"
+                    aria-pressed={selectedSelection?.direction === "spending" && Object.entries(selectionFor(row.label)).every(([key, value]) => selectedSelection[key as keyof ChartSelection] === value)}
+                    onClick={() => onSelect(selectionFor(row.label))}
+                  >
+                    <span>{row.label}</span>
+                    <span className="analytics-bar" aria-hidden="true">
+                      <span style={{ width: `${(row.amount / maximum) * 100}%` }} />
+                    </span>
+                  </button>
                 </th>
                 <td className="num">{formatMoney(row.amount, currency)}</td>
               </tr>
@@ -58,11 +73,13 @@ function Breakdown({
 
 type FlowSelection = { month: string; direction: "in" | "out" };
 
-function FlowDetail({ month, direction, currency, id }: {
+function FlowDetail({ month, direction, currency, id, selectedSelection, onSelect }: {
   month: TransactionSummary["monthly"][number];
   direction: FlowSelection["direction"];
   currency: string;
   id: string;
+  selectedSelection: ChartSelection | null;
+  onSelect: (selection: ChartSelection) => void;
 }) {
   const categories = direction === "in" ? month.incomingCategories : month.outgoingCategories;
   const count = categories.reduce((sum, row) => sum + row.count, 0);
@@ -81,7 +98,11 @@ function FlowDetail({ month, direction, currency, id }: {
         <>
           <p className="flow-detail-heading">By category</p>
           <ul className="flow-detail-categories">
-            {categories.slice(0, MAX_ROWS).map((row) => <li key={row.label}><span>{row.label}</span><span className="num">{formatMoney(row.amount, currency)}</span></li>)}
+            {categories.slice(0, MAX_ROWS).map((row) => {
+              const selection = { month: month.month, category: row.label, direction };
+              const isSelected = selectedSelection?.month === selection.month && selectedSelection.category === selection.category && selectedSelection.direction === selection.direction;
+              return <li key={row.label}><button type="button" className="flow-detail-category" aria-pressed={isSelected} onClick={() => onSelect(selection)}><span>{row.label}</span><span className="num">{formatMoney(row.amount, currency)}</span></button></li>;
+            })}
           </ul>
           {categories.length > MAX_ROWS && <p className="flow-detail-note">+{categories.length - MAX_ROWS} more</p>}
         </>
@@ -90,17 +111,19 @@ function FlowDetail({ month, direction, currency, id }: {
   );
 }
 
-function MonthlyFlow({ summary }: AnalyticsPanelProps) {
-  // ponytail: hover previews, click/focus pins, latest month is the resting state, so the
-  // panel is always filled and never shifts layout. No floating tooltip to position.
+function MonthlyFlow({ summary, selectedSelection, onSelect }: AnalyticsPanelProps) {
+  // Keep the preview visible while moving from a bar to its category buttons.
   const [hovered, setHovered] = useState<FlowSelection | null>(null);
-  const [pinned, setPinned] = useState<FlowSelection | null>(null);
   const detailId = useId();
   const months = summary.monthly.slice(-6);
   const fallback: FlowSelection | null = months.length
     ? { month: months[months.length - 1].month, direction: "out" }
     : null;
-  const selection = hovered ?? pinned ?? fallback;
+  const selectedFlow = selectedSelection?.month && (selectedSelection.direction === "in" || selectedSelection.direction === "out")
+    ? { month: selectedSelection.month, direction: selectedSelection.direction }
+    : null;
+  const isVisibleMonth = (candidate: FlowSelection | null): candidate is FlowSelection => Boolean(candidate && months.some((month) => month.month === candidate.month));
+  const selection = (isVisibleMonth(hovered) ? hovered : null) ?? (isVisibleMonth(selectedFlow) ? selectedFlow : null) ?? fallback;
   const selectedMonth = months.find((month) => month.month === selection?.month);
   const maximum = Math.max(
     ...months.flatMap((month) => [month.moneyIn, Math.abs(month.moneyOut)]),
@@ -119,10 +142,10 @@ function MonthlyFlow({ summary }: AnalyticsPanelProps) {
         <span className="label">Last 6 months with activity</span>
       </div>
       {months.length && selectedMonth && selection ? (
-        <div className="flow-layout">
-          <div className="flow-chart-area" onMouseLeave={() => setHovered(null)} onKeyDown={(event) => {
-            if (event.key === "Escape") { setHovered(null); setPinned(null); }
+        <div className="flow-layout" onMouseLeave={() => setHovered(null)} onKeyDown={(event) => {
+            if (event.key === "Escape") { setHovered(null); }
           }}>
+          <div className="flow-chart-area">
             <svg className="flow-chart" viewBox={`0 0 ${width} ${height}`} role="group" aria-label="Monthly money in and money out. Hover or focus a bar for its breakdown.">
               <title>Monthly flow</title>
               <desc>{months.map((month) => `${monthLabel(month.month)}: ${formatMoney(month.moneyIn, summary.currency)} in and ${formatMoney(Math.abs(month.moneyOut), summary.currency)} out`).join(". ")}</desc>
@@ -136,15 +159,16 @@ function MonthlyFlow({ summary }: AnalyticsPanelProps) {
                       const barHeight = (amount / maximum) * chartHeight;
                       const barX = x + (direction === "out" ? slot * 0.28 : 0);
                       const active = selection.month === month.month && selection.direction === direction;
+                      const isSelected = selectedFlow?.month === month.month && selectedFlow.direction === direction;
                       const select = () => setHovered({ month: month.month, direction });
                       return <g key={direction} className={active ? "flow-bar is-active" : "flow-bar"} role="button" tabIndex={0}
-                        aria-label={`${label}, money ${direction}: ${formatMoney(amount, summary.currency)}. Show breakdown.`}
-                        aria-describedby={active ? detailId : undefined} aria-pressed={active}
+                        aria-label={`${label}, money ${direction}: ${formatMoney(amount, summary.currency)}. Show related transactions.`}
+                        aria-describedby={active ? detailId : undefined} aria-pressed={isSelected}
                         onMouseEnter={select}
-                        onClick={() => { setPinned({ month: month.month, direction }); }}
-                        onFocus={() => { setHovered(null); setPinned({ month: month.month, direction }); }}
+                        onClick={() => onSelect({ month: month.month, direction })}
+                        onFocus={select}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPinned({ month: month.month, direction }); }
+                          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect({ month: month.month, direction }); }
                         }}>
                         <rect className="flow-hit-area" x={barX - 2} y={0} width={slot * 0.22 + 4} height={chartHeight + 4} rx="3" />
                         <rect className={`flow-${direction}`} x={barX} y={chartHeight - barHeight} width={slot * 0.22} height={barHeight} rx="2" />
@@ -161,7 +185,7 @@ function MonthlyFlow({ summary }: AnalyticsPanelProps) {
               
             </div>
           </div>
-          <FlowDetail month={selectedMonth} direction={selection.direction} currency={summary.currency} id={detailId} />
+          <FlowDetail month={selectedMonth} direction={selection.direction} currency={summary.currency} id={detailId} selectedSelection={selectedSelection} onSelect={onSelect} />
         </div>
       ) : (
         <p className="analytics-empty">No dated activity in this view.</p>
@@ -170,14 +194,14 @@ function MonthlyFlow({ summary }: AnalyticsPanelProps) {
   );
 }
 
-export default function AnalyticsPanel({ summary }: AnalyticsPanelProps) {
+export default function AnalyticsPanel({ summary, selectedSelection, onSelect }: AnalyticsPanelProps) {
   return (
     <section className="glass analytics-panel" aria-label="Spending analysis">
-      <MonthlyFlow summary={summary} />
+      <MonthlyFlow summary={summary} selectedSelection={selectedSelection} onSelect={onSelect} />
       <div className="analytics-breakdowns">
-        <Breakdown title="Categories" rows={summary.categories} currency={summary.currency} />
-        <Breakdown title="Merchants" rows={summary.merchants} currency={summary.currency} />
-        <Breakdown title="Accounts" rows={summary.accounts} currency={summary.currency} />
+        <Breakdown title="Categories" rows={summary.categories} currency={summary.currency} selectedSelection={selectedSelection} onSelect={onSelect} selectionFor={(category) => ({ category, direction: "spending" })} />
+        <Breakdown title="Merchants" rows={summary.merchants} currency={summary.currency} selectedSelection={selectedSelection} onSelect={onSelect} selectionFor={(merchant) => ({ merchant, direction: "spending" })} />
+        <Breakdown title="Accounts" rows={summary.accounts} currency={summary.currency} selectedSelection={selectedSelection} onSelect={onSelect} selectionFor={(accountLabel) => ({ accountLabel, direction: "spending" })} />
       </div>
     </section>
   );

@@ -1,10 +1,17 @@
 import type { DocumentRecord, StoredTransaction } from "../statements/types.js";
 
-export type TransactionFilters = {
+export type ChartSelection = {
+  month?: string;
+  category?: string;
+  merchant?: string;
+  accountLabel?: string;
+  direction?: "in" | "out" | "spending";
+};
+
+export type TransactionFilters = ChartSelection & {
   from?: string;
   to?: string;
   account?: string;
-  category?: string;
   query?: string;
   currency?: string;
   pending?: "exclude" | "include" | "only";
@@ -19,7 +26,7 @@ export function validateFilters(value: unknown = {}): TransactionFilters {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid transaction filters.");
   const filters = value as Record<string, unknown>;
   for (const [key, field] of Object.entries(filters)) {
-    if (!["from", "to", "account", "category", "query", "currency", "pending"].includes(key)) throw new Error("Unknown transaction filter.");
+    if (!["from", "to", "account", "category", "query", "currency", "pending", "month", "merchant", "accountLabel", "direction"].includes(key)) throw new Error("Unknown transaction filter.");
     if (field !== undefined && (typeof field !== "string" || field.length > 500)) throw new Error("Invalid transaction filter.");
   }
   for (const key of ["from", "to"] as const) {
@@ -27,6 +34,8 @@ export function validateFilters(value: unknown = {}): TransactionFilters {
   }
   if (filters.from && filters.to && filters.from > filters.to) throw new Error("The start date must come before the end date.");
   if (filters.pending !== undefined && !["exclude", "include", "only"].includes(filters.pending as string)) throw new Error("Invalid pending filter.");
+  if (filters.month !== undefined && !validDate(`${filters.month}-01`)) throw new Error("Choose a valid month.");
+  if (filters.direction !== undefined && !["in", "out", "spending"].includes(filters.direction as string)) throw new Error("Invalid transaction direction.");
   return { ...filters } as TransactionFilters;
 }
 
@@ -71,6 +80,10 @@ export function filterTransactions(rows: StoredTransaction[], filters: Transacti
     (!filters.from || row.date >= filters.from) && (!filters.to || row.date <= filters.to) &&
     (!filters.account || accountKey(row, documents) === filters.account) &&
     (!filters.category || transactionCategory(row) === filters.category) &&
+    (!filters.month || row.date.slice(0, 7) === filters.month) &&
+    (!filters.merchant || (row.merchantName || row.description) === filters.merchant) &&
+    (!filters.accountLabel || accountLabel(row, documents) === filters.accountLabel) &&
+    (!filters.direction || (filters.direction === "in" ? row.amount > 0 : row.amount < 0 && (filters.direction !== "spending" || !row.isTransfer))) &&
     (!filters.currency || transactionCurrency(row) === filters.currency) &&
     (filters.pending === "include" || (filters.pending === "only" ? row.pending : !row.pending)) &&
     (!query || `${row.description} ${row.merchantName ?? ""} ${accountLabel(row, documents)}`.toLocaleLowerCase().includes(query))
