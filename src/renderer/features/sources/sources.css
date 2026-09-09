@@ -41,6 +41,12 @@
 .src-panel > h3 {
   margin: 0;
 }
+/* ponytail: keeps the short AI panel under Banks, half width; nth-child beats threading a class through */
+@media (min-width: 52.01rem) {
+  .src-grid > section:nth-child(3) {
+    grid-column: 2;
+  }
+}
 
 /* storage folder row */
 .src-folder {

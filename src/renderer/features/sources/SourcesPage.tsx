@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import AiConnectionPanel from "../ai/AiConnectionPanel";
 import PlaidSection from "../plaid/PlaidSection";
 import DocumentsList from "../vault/DocumentsList";
 import DropZone from "../vault/DropZone";
@@ -167,7 +168,7 @@ export default function SourcesPage() {
   return (
     <div className="src-page">
       <div className="src-head">
-        <h2>Sources</h2>
+        <h2>Sources &amp; settings</h2>
         <p className="src-dim">Everything stays on this machine.</p>
       </div>
 
@@ -211,6 +212,10 @@ export default function SourcesPage() {
         <section className="glass src-panel" aria-labelledby="src-banks-title">
           <h3 id="src-banks-title">Banks</h3>
           <PlaidSection key={vault ?? ""} />
+        </section>
+
+        <section className="glass src-panel" aria-labelledby="src-ai-title">
+          <AiConnectionPanel />
         </section>
       </div>
     </div>

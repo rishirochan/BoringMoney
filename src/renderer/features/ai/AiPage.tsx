@@ -5,84 +5,58 @@ import "./ai.css";
 
 const suggestions = ["Where did most of my spending go? Show a category chart.", "Compare money in and money out by month.", "Which merchants did I spend the most with?"];
 
+type Turn = { question: string; response?: AiQueryResponse; error?: string };
+
 export default function AiPage() {
   const [statuses, setStatuses] = useState<AiProviderStatus[]>([]);
   const [provider, setProvider] = useState<AiProvider>("codex");
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [pending, setPending] = useState(false);
-  const [refreshing, setRefreshing] = useState(true);
   const [error, setError] = useState("");
-  const [savingModel, setSavingModel] = useState(false);
-  const [modelFeedback, setModelFeedback] = useState("");
-  const [response, setResponse] = useState<AiQueryResponse | null>(null);
-  const [asked, setAsked] = useState("");
   const request = useRef<string | null>(null);
   const mounted = useRef(true);
-
-  async function refreshStatus() {
-    setRefreshing(true);
-    setError("");
-    try {
-      const next = await window.boringmoney.getAiStatus();
-      if (!mounted.current) return;
-      setStatuses(next);
-      setProvider((current) => next.find((status) => status.provider === current)?.state === "ready"
-        ? current : next.find((status) => status.state === "ready")?.provider ?? current);
-    } catch (cause) {
-      if (mounted.current) {
-        setStatuses([]);
-        setError(cause instanceof Error ? cause.message : "Could not check AI connections.");
-      }
-    } finally {
-      if (mounted.current) setRefreshing(false);
-    }
-  }
+  const feed = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     mounted.current = true;
-    void refreshStatus();
+    window.boringmoney.getAiStatus().then((next) => {
+      if (!mounted.current) return;
+      setStatuses(next);
+      setProvider(next.find((status) => status.state === "ready")?.provider ?? "codex");
+    }).catch((cause) => {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not check AI connections.");
+    });
     return () => {
       mounted.current = false;
       if (request.current) void window.boringmoney.cancelAi(request.current);
     };
   }, []);
 
-  async function changeModel(model: string) {
-    setSavingModel(true);
-    setModelFeedback("");
-    setError("");
-    try {
-      const next = await window.boringmoney.setAiModel(provider, model);
-      if (mounted.current) { setStatuses(next); setModelFeedback("Model saved for future questions."); }
-    } catch (cause) {
-      if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not save the model.");
-    } finally {
-      if (mounted.current) setSavingModel(false);
-    }
-  }
-
-  function selectProvider(name: AiProvider) {
-    setProvider(name);
-    setModelFeedback("");
-  }
+  useEffect(() => {
+    feed.current?.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [turns, pending]);
 
   async function ask(event: React.FormEvent) {
     event.preventDefault();
-    if (!question.trim() || pending || savingModel || refreshing) return;
+    const asked = question.trim();
+    if (!asked || pending) return;
     if (from && to && from > to) { setError("The start date must come before the end date."); return; }
     const requestId = crypto.randomUUID();
     request.current = requestId;
     setPending(true);
     setError("");
-    setResponse(null);
-    setAsked(question.trim());
+    setQuestion("");
+    setTurns((current) => [...current, { question: asked }]);
+    const settle = (patch: Partial<Turn>) =>
+      setTurns((current) => current.map((turn, index) => index === current.length - 1 ? { ...turn, ...patch } : turn));
     try {
-      const result = await window.boringmoney.queryAi({requestId, provider, question:question.trim(), filters:{from:from || undefined,to:to || undefined,pending:"exclude"}});
-      if (mounted.current && request.current === requestId) setResponse(result);
+      const result = await window.boringmoney.queryAi({requestId, provider, question: asked, filters:{from: from || undefined, to: to || undefined, pending:"exclude"}});
+      if (mounted.current && request.current === requestId) settle({ response: result });
     } catch (cause) {
-      if (mounted.current && request.current === requestId) setError(cause instanceof Error ? cause.message : "The analysis failed. Try again.");
+      if (mounted.current && request.current === requestId) settle({ error: cause instanceof Error ? cause.message : "The analysis failed. Try again." });
     } finally {
       if (mounted.current && request.current === requestId) { setPending(false); request.current = null; }
     }
@@ -95,70 +69,46 @@ export default function AiPage() {
   }
 
   const selected = statuses.find((status) => status.provider === provider);
-  const modelLabel = selected?.modelOptions.find((model) => model.id === selected.model)?.label;
   return (
     <div className="ai-page">
-      <header className="ai-heading">
-        <div><h1>Ask your transactions</h1><p>Find patterns, compare months, and see where your money went.</p></div>
-        <a href="#/">View transactions</a>
-      </header>
-      <div className="ai-workspace">
-      <div className="ai-main">
+      <div className="ai-feed" ref={feed} aria-live="polite">
+        {!turns.length && <div className="ai-empty">
+          <h1>Ask your transactions</h1>
+          <p className="note">Find patterns, compare months, and see where your money went.</p>
+          <div className="ai-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" className="btn" onClick={() => setQuestion(suggestion)}>{suggestion}</button>)}</div>
+        </div>}
+        {turns.map((turn, index) => <div className="ai-turn" key={index}>
+          <p className="ai-bubble is-you">{turn.question}</p>
+          {turn.error && <p className="ai-bubble is-ai note is-warn" role="alert">{turn.error}</p>}
+          {turn.response && <div className="ai-bubble is-ai">
+            <div className="ai-prose">{turn.response.answer.split(/\n\s*\n/).filter(Boolean).map((paragraph, i) => <p key={i}>{paragraph}</p>)}</div>
+            {turn.response.charts.map((chart: AiChart, i: number) => <AiChartView key={i} chart={chart} />)}
+            <p className="note ai-coverage">Based on {turn.response.coverage.filteredTransactions.toLocaleString()} of {turn.response.coverage.totalTransactions.toLocaleString()} transactions{turn.response.coverage.from && turn.response.coverage.to ? `, ${turn.response.coverage.from} to ${turn.response.coverage.to}` : ""}{turn.response.coverage.rowsOmitted > 0 ? `. ${turn.response.coverage.rowsProvided.toLocaleString()} sent in full, the rest as totals` : ""}.</p>
+          </div>}
+          {pending && index === turns.length - 1 && !turn.response && !turn.error && <p className="ai-bubble is-ai note">Analyzing your transaction history…</p>}
+        </div>)}
+      </div>
+
       <form className="glass ai-composer" onSubmit={ask}>
-        <label htmlFor="ai-question">What would you like to understand?</label>
-        <textarea id="ai-question" rows={3} maxLength={1000} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Show my spending by category for August." disabled={pending} required />
-        <div className="ai-suggestions">{suggestions.map((suggestion) => <button key={suggestion} type="button" className="btn" onClick={() => setQuestion(suggestion)} disabled={pending}>{suggestion}</button>)}</div>
-        <div className="ai-scope"><label>From<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} disabled={pending} /></label><label>To<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} disabled={pending} /></label></div>
+        <textarea rows={2} maxLength={1000} value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void ask(event); }
+        }} placeholder="Show my spending by category for August." aria-label="Question" required />
+        <div className="ai-composer-bar">
+          {/* ponytail: model and sign-in live on the sources page; here only what changes per question */}
+          <select value={provider} onChange={(event) => setProvider(event.target.value as AiProvider)} disabled={pending} aria-label="AI provider">
+            {(["codex", "claude"] as const).map((name) => <option key={name} value={name}>{name === "codex" ? "Codex" : "Claude"}</option>)}
+          </select>
+          <label>From<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} disabled={pending} /></label>
+          <label>To<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} disabled={pending} /></label>
+          <span className="ai-composer-spacer" />
+          {pending
+            ? <button type="button" className="btn" onClick={cancel}>Stop</button>
+            : <button className="btn btn-primary" type="submit" disabled={!question.trim() || (selected && selected.state !== "ready")}>Ask</button>}
+        </div>
+        {error && <p className="note is-warn" role="alert">{error}</p>}
+        {selected && selected.state !== "ready" && <p className="note is-warn">{selected.label} is not connected. <a href="#/sources">Open settings</a>.</p>}
         <p className="note ai-privacy">Transaction details go to your AI provider. Credentials and statement files stay on this machine.</p>
-        <div className="ai-submit">{pending ? <button type="button" className="btn" onClick={cancel}>Stop analysis</button> : <button className="btn btn-primary" type="submit" disabled={selected?.state !== "ready" || refreshing || savingModel || !question.trim()}>Analyze transactions</button>}{modelLabel && <span className="note">Using {modelLabel}</span>}</div>
       </form>
-      <div aria-live="polite">{error && <p className="note is-warn" role="alert">{error}</p>}{pending && <p className="note">Analyzing your transaction history…</p>}</div>
-      {response && <section className="glass ai-answer" aria-labelledby="ai-answer-title">
-        <p className="label">{response.provider === "codex" ? "Codex" : "Claude"} analysis{response.model ? ` · ${statuses.find((status) => status.provider === response.provider)?.modelOptions.find((model) => model.id === response.model)?.label ?? response.model}` : ""}</p><h2 id="ai-answer-title">{asked}</h2>
-        <div className="ai-prose">{response.answer.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
-        {response.charts.map((chart: AiChart, index: number) => <AiChartView key={index} chart={chart} />)}
-        <p className="note ai-coverage">Based on {response.coverage.filteredTransactions.toLocaleString()} of {response.coverage.totalTransactions.toLocaleString()} transactions{response.coverage.from && response.coverage.to ? `, ${response.coverage.from} to ${response.coverage.to}` : ""}{response.coverage.rowsOmitted > 0 ? `. ${response.coverage.rowsProvided.toLocaleString()} sent in full, the rest as totals` : ""}.</p>
-      </section>}
-      </div>
-      <aside className="glass ai-connections" aria-labelledby="ai-connection-title">
-        <h2 id="ai-connection-title">AI connection</h2>
-        <div className="ai-provider-options" role="tablist" aria-label="AI provider">
-          {(["codex", "claude"] as const).map((name) => {
-            const status = statuses.find((item) => item.provider === name);
-            const state = refreshing || !status ? "checking" : status.state === "ready" ? "connected" : "disconnected";
-            return <button type="button" key={name} id={`ai-tab-${name}`} role="tab" aria-controls="ai-provider-panel" aria-selected={provider === name} tabIndex={provider === name ? 0 : -1} className={`ai-provider${provider === name ? " is-selected" : ""}`} onClick={() => selectProvider(name)} disabled={pending || savingModel} onKeyDown={(event) => {
-              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-              event.preventDefault();
-              const next = event.key === "Home" ? "codex" : event.key === "End" ? "claude" : name === "codex" ? "claude" : "codex";
-              selectProvider(next);
-              document.getElementById(`ai-tab-${next}`)?.focus();
-            }}>
-              <span>{name === "codex" ? "Codex" : "Claude"}</span>
-              <span className={`ai-provider-state is-${state}`}><span className="ai-status-dot" aria-hidden="true" />{state === "checking" ? refreshing ? "Checking…" : "Unknown" : state === "connected" ? "Connected" : "Not connected"}</span>
-            </button>;
-          })}
-        </div>
-        <div id="ai-provider-panel" role="tabpanel" aria-labelledby={`ai-tab-${provider}`} className="ai-connection-detail" tabIndex={0}>
-          {selected && <>
-            <p className="ai-connection-message">{selected.message}</p>
-            {selected.state !== "ready" && <p>Run <code>{selected.loginCommand}</code> in your terminal, then check connections.</p>}
-            <label className="ai-model-label" htmlFor="ai-model">Model</label>
-            <select id="ai-model" value={selected.model} onChange={(event) => void changeModel(event.target.value)} disabled={pending || refreshing || savingModel}>
-              {selected.modelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-            </select>
-            <p className="note" role="status">{savingModel ? "Saving…" : modelFeedback}</p>
-            {/* ponytail: native <details> keeps the rarely-read lines out of the way */}
-            <details className="ai-connection-more">
-              <summary>Connection details</summary>
-              <p className="note ai-model-id">{selected.model}</p>
-              <p className="note">{selected.quotaNote}</p>
-              {selected.version && <p className="note">CLI version: {selected.version}</p>}
-            </details>
-          </>}
-        </div>
-        <button className="btn ai-check-connection" type="button" onClick={refreshStatus} disabled={refreshing || pending || savingModel}>{refreshing ? "Checking…" : "Check connections"}</button>
-      </aside>
-      </div>
     </div>
   );
 }
