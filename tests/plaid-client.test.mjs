@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createLinkToken,
   exchangePublicToken,
+  fetchTransactionUpdates,
   isTrustedPlaidLinkUrl,
   parsePlaidCredentials,
   PLAID_LINK_URL,
@@ -79,4 +80,35 @@ test("trusts only the Plaid Link document for navigation and callbacks", () => {
   assert.equal(isTrustedPlaidLinkUrl("boring-money://plaid-link/redirect"), false);
   assert.equal(isTrustedPlaidLinkUrl("boring-money://plaid-link/?redirect=1"), false);
   assert.equal(isTrustedPlaidLinkUrl("not a URL"), false);
+});
+
+test("sync tolerates removals without account_id and blank optional fields", async () => {
+  const fetcher = async () =>
+    new Response(
+      JSON.stringify({
+        added: [
+          {
+            transaction_id: "tx-1",
+            account_id: "acct-1",
+            date: "2026-01-02",
+            name: "Coffee",
+            merchant_name: "",
+            iso_currency_code: "",
+            personal_finance_category: { primary: "", detailed: "" },
+            amount: 4.5,
+            pending: false,
+          },
+        ],
+        modified: [],
+        removed: [{ transaction_id: "tx-0" }],
+        next_cursor: "cursor-1",
+        has_more: false,
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  const updates = await fetchTransactionUpdates(credentials, "access-token", undefined, fetcher);
+  assert.deepEqual(updates.removed, [{ transactionId: "tx-0" }]);
+  assert.equal(updates.added[0].merchantName, undefined);
+  assert.equal(updates.added[0].currency, undefined);
+  assert.equal(updates.added[0].category, undefined);
 });

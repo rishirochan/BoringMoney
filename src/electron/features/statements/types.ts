@@ -99,4 +99,15 @@ export interface DocumentRecord {
   account?: string;
 }
 
-export type StoredTransaction = Transaction & { documentId: string };
+export type StoredTransaction = Transaction & {
+  documentId: string;
+  source?: "statement" | "plaid";
+  accountId?: string;
+  accountName?: string;
+  category?: string;
+  currency?: string;
+  pending?: boolean;
+  isTransfer?: boolean;
+  merchantName?: string;
+  transactionId?: string;
+};

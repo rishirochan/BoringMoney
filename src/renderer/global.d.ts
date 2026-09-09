@@ -45,17 +45,7 @@ type DocumentRecord = {
   validation?: ValidationReport;
 };
 
-type StoredTransaction = {
-  documentId: string;
-  date: string;
-  postedDate?: string;
-  description: string;
-  amount: number;
-  type: "purchase" | "payment" | "fee" | "refund" | "interest";
-  referenceNumber?: string;
-  balance?: number;
-  rawLine: string;
-};
+type StoredTransaction = import("../electron/features/statements/types").StoredTransaction;
 
 type ParsedStatement = {
   summary: StatementSummary;
@@ -81,6 +71,9 @@ type PlaidConnection = {
   id: string;
   institutionName: string;
   connectedAt: number;
+  transactionCount: number;
+  lastSyncedAt?: number;
+  syncError?: string;
   accounts: {
     id: string;
     name: string;
@@ -101,6 +94,9 @@ type PlaidStatus =
 
 interface Window {
   boringmoney: {
+    getAiStatus(): Promise<import("../electron/features/ai/types").AiProviderStatus[]>;
+    queryAi(request: import("../electron/features/ai/types").AiQueryRequest): Promise<import("../electron/features/ai/types").AiQueryResponse>;
+    cancelAi(requestId: string): Promise<{ canceled: boolean }>;
     getVaultPath(): Promise<string | null>;
     chooseVault(): Promise<string | null>;
     importFiles(paths: string[]): Promise<ImportResult[]>;
@@ -111,9 +107,10 @@ interface Window {
     setDocumentAccount(id: string, account: string): Promise<DocumentRecord>;
     deleteDocument(id: string): Promise<DocumentRecord | null>;
     listTransactions(): Promise<StoredTransaction[]>;
-    exportTransactions(): Promise<
+    exportTransactions(filters?: import("../electron/features/analytics/transactions").TransactionFilters): Promise<
       { ok: true; path: string } | { ok: false; canceled: true }
     >;
+    syncPlaid(itemId?: string): Promise<{ results: {itemId: string; institutionName: string; added: number; modified: number; removed: number; transactionCount: number; lastSyncedAt?: number; error?: string}[] }>;
     getPlaidStatus(): Promise<PlaidStatus>;
     getPlaidCredentials(): Promise<{
       clientId: string;

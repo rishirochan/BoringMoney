@@ -1,15 +1,17 @@
 import { app, dialog, ipcMain, shell } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   getDocument,
   listDocuments,
-  listTransactions,
   loadParsed,
   removeDocument,
   renameDocument,
   setDocumentAccount,
 } from "../documents/store.js";
+import { listAllTransactions } from "../plaid/transactions.js";
+import { filterTransactions, validateFilters } from "../analytics/transactions.js";
 import { transactionsToCsv } from "../statements/export-csv.js";
 import { importFiles, listFiles, readVaultPath, writeVaultPath } from "./ingest.js";
 
@@ -91,14 +93,15 @@ export function registerVaultHandlers() {
 
   ipcMain.handle("transactions:list", async () => {
     const vaultPath = await readVaultPath(configPath());
-    return vaultPath ? listTransactions(vaultPath) : [];
+    return vaultPath ? listAllTransactions(vaultPath) : [];
   });
 
-  ipcMain.handle("transactions:export", async () => {
+  ipcMain.handle("transactions:export", async (_event, value: unknown) => {
+    const filters = value === undefined ? { pending: "include" as const } : validateFilters(value);
     const vaultPath = await readVaultPath(configPath());
     if (!vaultPath) throw new Error("no vault selected");
     const [transactions, documents] = await Promise.all([
-      listTransactions(vaultPath),
+      listAllTransactions(vaultPath),
       listDocuments(vaultPath),
     ]);
     const result = await dialog.showSaveDialog({
@@ -107,7 +110,13 @@ export function registerVaultHandlers() {
     });
     if (result.canceled || !result.filePath) return { ok: false as const, canceled: true as const };
     const sources = new Map(documents.map((document) => [document.id, document.fileName]));
-    await fs.writeFile(result.filePath, transactionsToCsv(transactions, sources), "utf8");
+    const temporaryPath = `${result.filePath}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(temporaryPath, transactionsToCsv(filterTransactions(transactions, filters, documents), sources), { encoding: "utf8", mode: 0o600 });
+      await fs.rename(temporaryPath, result.filePath);
+    } finally {
+      await fs.rm(temporaryPath, { force: true });
+    }
     return { ok: true as const, path: result.filePath };
   });
 }

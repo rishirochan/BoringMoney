@@ -22,8 +22,8 @@ test("transactionsToCsv: header and one row", () => {
   assert.equal(
     csv,
     [
-      "Date,Posted Date,Description,Amount,Type,Reference,Balance,Source",
-      "2026-01-15,,COFFEE SHOP,-6.75,purchase,,,chase-jan.pdf",
+      "Date,Posted Date,Description,Amount,Type,Reference,Balance,Source,Currency,Category,Pending",
+      "2026-01-15,,COFFEE SHOP,-6.75,purchase,,,chase-jan.pdf,Unknown,,No",
       "",
     ].join("\n")
   );
@@ -52,5 +52,23 @@ test("transactionsToCsv: escapes commas, quotes, and newlines", () => {
 });
 
 test("transactionsToCsv: empty list still writes the header", () => {
-  assert.equal(transactionsToCsv([], sources), "Date,Posted Date,Description,Amount,Type,Reference,Balance,Source\n");
+  assert.equal(transactionsToCsv([], sources), "Date,Posted Date,Description,Amount,Type,Reference,Balance,Source,Currency,Category,Pending\n");
+});
+
+
+test("transactionsToCsv: preserves Plaid source, currency and pending status", () => {
+  const csv = transactionsToCsv([{documentId:"plaid:item", date:"2026-01-01",description:"Market",amount:-12,type:"purchase",rawLine:"",source:"plaid",accountName:"Checking",currency:"EUR",category:"FOOD_AND_DRINK",pending:true}],new Map());
+  assert.match(csv, /Checking,EUR,FOOD_AND_DRINK,Yes/);
+});
+
+test("transactionsToCsv: untrusted text cannot become a spreadsheet formula", () => {
+  const csv = transactionsToCsv([{documentId:"a",date:"2026-01-01",description:'=HYPERLINK("https://example.test")',amount:-12,type:"purchase",rawLine:"",accountName:"+Formula"}],new Map());
+  assert.match(csv, /"'=HYPERLINK/);
+  assert.match(csv, /'\+Formula/);
+  assert.match(csv, /,-12\.00,purchase/);
+});
+
+
+test("transactionsToCsv: preserves three-decimal amounts", () => {
+  assert.match(transactionsToCsv([{documentId:"a",date:"2026-01-01",description:"Shop",amount:-1.234,type:"purchase",rawLine:"",currency:"BHD"}],new Map()), /,-1.234,purchase/);
 });
