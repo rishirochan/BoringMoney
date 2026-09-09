@@ -21,6 +21,8 @@ export type AiProviderStatus = {
   loginCommand: string;
   message: string;
   quotaNote: string;
+  model: string;
+  modelOptions: { id: string; label: string }[];
 };
 
 export type AiQueryRequest = {
@@ -53,6 +55,7 @@ export type AiChart = {
 export type AiQueryResponse = {
   requestId: string;
   provider: AiProvider;
+  model?: string;
   answer: string;
   charts: AiChart[];
   coverage: AiCoverage;

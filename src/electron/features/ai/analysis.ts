@@ -223,7 +223,7 @@ function compactSummary(summary: TransactionSummary) {
     merchants: take(summary.merchants, 50),
     accounts: take(summary.accounts, 30),
     monthly: {
-      items: summary.monthly.slice(-36),
+      items: summary.monthly.slice(-36).map(({ month, moneyIn, moneyOut, net }) => ({ month, moneyIn, moneyOut, net })),
       omitted: Math.max(0, summary.monthly.length - 36),
     },
   };

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   MAX_CONTEXT_ROWS,
   analyzeTransactions,
@@ -9,9 +12,42 @@ import {
   parseAnalysisPlan,
 } from "../dist-electron/features/ai/analysis.js";
 import {
+  claudeArguments,
+  codexArguments,
   parseClaudeAuthStatus,
   parseCodexAuthStatus,
 } from "../dist-electron/features/ai/cli.js";
+import { DEFAULT_AI_MODELS, readAiModels, saveAiModel } from "../dist-electron/features/ai/models.js";
+
+test("models persist separately, reject invalid changes, and reach isolated CLI commands", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "boringmoney-model-test-"));
+  const settings = path.join(directory, "ai-models.json");
+  try {
+    assert.deepEqual(readAiModels(settings), DEFAULT_AI_MODELS);
+    saveAiModel(settings, "codex", "gpt-5.6-luna");
+    saveAiModel(settings, "claude", "claude-sonnet-5");
+    assert.deepEqual(readAiModels(settings), { codex: "gpt-5.6-luna", claude: "claude-sonnet-5" });
+    const saved = readFileSync(settings, "utf8");
+    assert.throws(() => saveAiModel(settings, "codex", "claude-sonnet-5"), /Choose a model/);
+    assert.throws(() => saveAiModel(settings, "__proto__", "gpt-5.6-luna"), /Unknown AI provider/);
+    assert.throws(() => saveAiModel(settings, "claude", "--dangerously-skip-permissions"), /Choose a model/);
+    assert.equal(readFileSync(settings, "utf8"), saved);
+    assert.deepEqual(readdirSync(directory), ["ai-models.json"]);
+    const codex = codexArguments(readAiModels(settings).codex, "/tmp/schema.json");
+    const claude = claudeArguments(readAiModels(settings).claude, { type: "object" });
+    assert.equal(codex[codex.indexOf("--model") + 1], "gpt-5.6-luna");
+    assert.equal(claude[claude.indexOf("--model") + 1], "claude-sonnet-5");
+    assert.equal(codex[codex.indexOf("--sandbox") + 1], "read-only");
+    assert.ok(codex.includes("--ignore-user-config"));
+    assert.ok(claude.includes("--safe-mode"));
+    assert.equal(claude[claude.indexOf("--tools") + 1], "");
+    writeFileSync(settings, "{broken");
+    assert.throws(() => saveAiModel(settings, "codex", "gpt-6-astra"), /Could not read/);
+    assert.equal(readFileSync(settings, "utf8"), "{broken");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 const transaction = (overrides = {}) => ({
   documentId: "plaid",
