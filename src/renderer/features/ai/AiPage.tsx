@@ -25,7 +25,10 @@ export default function AiPage() {
     window.boringmoney.getAiStatus().then((next) => {
       if (!mounted.current) return;
       setStatuses(next);
-      setProvider(next.find((status) => status.state === "ready")?.provider ?? "codex");
+      // Keep a provider the user picked while the check was still running.
+      setProvider((current) => next.some((status) => status.provider === current && status.state === "ready")
+        ? current
+        : next.find((status) => status.state === "ready")?.provider ?? "codex");
     }).catch((cause) => {
       if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not check AI connections.");
     });
@@ -42,7 +45,8 @@ export default function AiPage() {
   async function ask(event: React.FormEvent) {
     event.preventDefault();
     const asked = question.trim();
-    if (!asked || pending) return;
+    // ponytail: one guard here covers both the button and the Enter key.
+    if (!asked || pending || statuses.find((status) => status.provider === provider)?.state !== "ready") return;
     if (from && to && from > to) { setError("The start date must come before the end date."); return; }
     const requestId = crypto.randomUUID();
     request.current = requestId;
@@ -103,7 +107,7 @@ export default function AiPage() {
           <span className="ai-composer-spacer" />
           {pending
             ? <button type="button" className="btn" onClick={cancel}>Stop</button>
-            : <button className="btn btn-primary" type="submit" disabled={!question.trim() || (selected && selected.state !== "ready")}>Ask</button>}
+            : <button className="btn btn-primary" type="submit" disabled={!question.trim() || selected?.state !== "ready"}>Ask</button>}
         </div>
         {error && <p className="note is-warn" role="alert">{error}</p>}
         {selected && selected.state !== "ready" && <p className="note is-warn">{selected.label} is not connected. <a href="#/sources">Open settings</a>.</p>}
