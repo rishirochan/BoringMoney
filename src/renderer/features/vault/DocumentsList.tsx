@@ -93,15 +93,18 @@ export default function DocumentsList({
                       placeholder="e.g. Everyday card" value={value} onChange={(event) => setValue(event.target.value)} />
                     <button className="btn" disabled={busyId !== null}>{busyId === group[0].id ? "Saving…" : "Save"}</button>
                     <button type="button" className="btn" disabled={busyId !== null} onClick={() => setEditing(null)}>Cancel</button>
-                    <span className="src-hint">Use this name in AI questions. Leave blank to reset.</span>
+                    
                   </form>
                 ) : (
                   <>
-                    <div className="src-group-title">{sourceLabel(group[0])}</div>
+                    <div className="src-group-title">
+                      {sourceLabel(group[0])}
+                      {group[0].accountNickname && <span className="src-hint">{sourceLabel({ ...group[0], accountNickname: undefined })}</span>}
+                    </div>
                     <button type="button" className="btn" disabled={busyId !== null}
-                      aria-label={`Set nickname for ${sourceLabel(group[0])}`}
+                      aria-label={`Rename account ${sourceLabel(group[0])}`}
                       onClick={() => { setEditing({ id: group[0].id, mode: "nickname" }); setValue(group[0].accountNickname ?? ""); }}>
-                      {group[0].accountNickname ? "Edit nickname" : "Nickname"}
+                      Rename
                     </button>
                   </>
                 )}
@@ -158,7 +161,7 @@ export default function DocumentsList({
                               setValue(document.fileName.replace(/\.csv$/i, ""));
                             }}
                           >
-                            Rename
+                            Rename file
                           </button>
                         )}
                         {!isEditing && (
@@ -194,9 +197,6 @@ export default function DocumentsList({
       )}
       {documents.length > 0 && (
         <>
-          <p className="src-hint">
-            Statements in the same account are checked for overlapping transactions.
-          </p>
           <datalist id="src-account-options">
             {accountOptions.map((option) => <option key={option} value={option} />)}
           </datalist>

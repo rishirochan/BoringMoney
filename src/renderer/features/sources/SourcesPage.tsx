@@ -168,9 +168,7 @@ export default function SourcesPage() {
     <div className="src-page">
       <div className="src-head">
         <h2>Sources</h2>
-        <p className="src-dim">
-          Statements you drop in and banks you connect. Everything stays on this machine.
-        </p>
+        <p className="src-dim">Everything stays on this machine.</p>
       </div>
 
       <div className="src-grid">

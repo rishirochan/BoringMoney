@@ -208,6 +208,16 @@
   display: grid;
   overflow-wrap: anywhere;
 }
+.src-group-title .src-hint,
+.src-account-label .src-hint {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+}
 .src-doc-list li {
   display: grid;
   gap: 0.3rem;

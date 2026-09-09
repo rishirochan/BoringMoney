@@ -173,9 +173,7 @@ export default function PlaidSection() {
     <div className="src-plaid">
       <div className="src-intro">
         <span className="label">Plaid · bring your own keys</span>
-        <p className="src-dim">
-          Your client ID and secret are encrypted by your operating system and sent only to Plaid.
-        </p>
+        <p className="src-dim">Encrypted by your operating system, sent only to Plaid.</p>
       </div>
 
       {showForm ? (
@@ -232,9 +230,7 @@ export default function PlaidSection() {
               <option value="sandbox">Sandbox</option>
               <option value="production">Production</option>
             </select>
-            <span className="src-hint">
-              Sandbox uses test banks. Production connects real accounts and requires Plaid access.
-            </span>
+            <span className="src-hint">Sandbox uses test banks.</span>
           </label>
           <div className="src-actions">
             <button className="btn btn-primary" type="submit" disabled={busy}>
@@ -321,7 +317,7 @@ export default function PlaidSection() {
                               placeholder="e.g. Everyday checking" value={nickname} onChange={(event) => setNickname(event.target.value)} />
                             <button className="btn" disabled={savingNickname}>{savingNickname ? "Saving…" : "Save"}</button>
                             <button type="button" className="btn" disabled={savingNickname} onClick={() => setNicknameAccountId(null)}>Cancel</button>
-                            <span className="src-hint">Use this name in AI questions. Leave blank to reset.</span>
+                            
                           </form>
                         ) : (
                           <>
@@ -330,21 +326,21 @@ export default function PlaidSection() {
                               {account.nickname && <span className="src-hint">{account.name}</span>}
                             </span>
                             <button type="button" className="btn" disabled={savingNickname}
-                              aria-label={`Set nickname for ${account.nickname ?? account.name}${account.mask ? ` ending ${account.mask}` : ""}`}
+                              aria-label={`Rename account ${account.nickname ?? account.name}${account.mask ? ` ending ${account.mask}` : ""}`}
                               onClick={() => { setNicknameAccountId(account.id); setNickname(account.nickname ?? ""); }}>
-                              {account.nickname ? "Edit nickname" : "Nickname"}
+                              Rename
                             </button>
                           </>
                         )}
                       </div>
                     ))}
                     <span className="src-dim">
-                      Connected {dateFormatter.format(connection.connectedAt)}
-                    </span>
-                    <span className="src-dim">
-                      {connection.lastSyncedAt
-                        ? `${connection.transactionCount.toLocaleString()} transactions · synced ${dateFormatter.format(connection.lastSyncedAt)}`
-                        : "Transactions have not synced yet"}
+                      {[
+                        `Connected ${dateFormatter.format(connection.connectedAt)}`,
+                        connection.lastSyncedAt
+                          ? `${connection.transactionCount.toLocaleString()} transactions · synced ${dateFormatter.format(connection.lastSyncedAt)}`
+                          : "not synced yet",
+                      ].join(" · ")}
                     </span>
                     {connection.syncError && <span className="note is-warn">{connection.syncError}</span>}
                   </div>
