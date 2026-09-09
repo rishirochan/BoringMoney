@@ -18,12 +18,17 @@
   --radius-sm: 10px;
   --font-mono: "Geist Mono Variable", ui-monospace, sfmono-regular, menlo, monospace;
   --font-sans: "Geist Variable", ui-sans-serif, -apple-system, "Segoe UI", roboto, sans-serif;
-  --source-color-0: oklch(0.78 0.12 155);
-  --source-color-1: oklch(0.78 0.12 245);
-  --source-color-2: oklch(0.78 0.12 75);
-  --source-color-3: oklch(0.78 0.12 330);
-  --source-color-4: oklch(0.78 0.12 195);
-  --source-color-5: oklch(0.78 0.12 285);
+  /* Per-account colours. Hues are spread ~45-70deg apart and lightness zigzags, so any two
+     differ on two axes, not just hue -- identical L/C made 155/195/245 read as one blue-green
+     at dot and stripe sizes. Ordered so the first two accounts land furthest apart.
+     ponytail: 6 hues cannot all be far apart; blue/violet is the weakest pair and needs a
+     6th account to appear at all. Add patterns or labels before adding a 7th colour. */
+  --source-color-0: oklch(0.8 0.15 152); /* green */
+  --source-color-1: oklch(0.86 0.14 80); /* amber */
+  --source-color-2: oklch(0.7 0.16 258); /* blue */
+  --source-color-3: oklch(0.8 0.16 355); /* rose */
+  --source-color-4: oklch(0.91 0.09 198); /* cyan */
+  --source-color-5: oklch(0.76 0.17 310); /* violet */
 
   color-scheme: dark;
 }

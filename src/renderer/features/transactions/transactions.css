@@ -117,6 +117,23 @@
 .tx-table tbody tr:hover td {
   background: rgba(255, 255, 255, 0.03);
 }
+/* per-account colour: a stripe on the row and a matching dot beside the account name,
+   so the stripe is self-explanatory without a legend */
+.tx-row td:first-child {
+  border-left: 3px solid var(--source-color);
+}
+.tx-account {
+  white-space: nowrap;
+}
+.tx-account-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: var(--source-color);
+  vertical-align: baseline;
+}
 .tx-date {
   color: var(--text-dim);
   white-space: nowrap;
