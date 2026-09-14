@@ -38,17 +38,19 @@ test('totals use minor units and spending excludes known transfers without label
   assert.equal(summary.categories[0].amount,.3);
   assert.equal(summary.transferCount,1);
   assert.deepEqual(summary.monthly.map(m=>m.month),['2026-01','2026-02']);
-  assert.throws(() => summarizeTransactions([row('2026-01-01',1),row('2026-01-02',2,{currency:'EUR'})]), /currency/);
+  assert.throws(() => summarizeTransactions([row('2026-01-01',1,{currency:'USD'}),row('2026-01-02',2,{currency:'EUR'})]), /currency/);
   assert.equal(transactionCurrency(row('2026-01-01',1,{source:'plaid'})), 'Unknown');
   assert.equal(accountKey(row('2026-01-01',1,{accountId:'checking'}),[]),'plaid:checking');
 });
 
 
-test('unknown currencies stay separate and higher precision amounts survive totals', () => {
+test('unknown currencies overlay the known one and higher precision amounts survive totals', () => {
   const a = row('2026-01-01',-1.234,{currency:'BHD'});
   const b = row('2026-01-02',-2.345,{currency:'BHD'});
   assert.equal(summarizeTransactions([a,b]).moneyOut,3.579);
   assert.equal(summarizeTransactions([a,b]).categories[0].amount,3.579);
   assert.equal(transactionCurrency(row('2026-01-01',1)), 'Unknown');
-  assert.throws(() => summarizeTransactions([row('2026-01-01',1), row('2026-01-01',1,{currency:'USD'})]), /currency/);
+  // rows with no currency (statements) overlay whichever currency the known rows use
+  assert.equal(summarizeTransactions([row('2026-01-01',1), row('2026-01-01',1,{currency:'USD'})]).moneyIn, 2);
+  assert.equal(filterTransactions([row('2026-01-01',1), row('2026-01-02',1,{currency:'EUR'})], {currency:'USD'}).length, 1);
 });

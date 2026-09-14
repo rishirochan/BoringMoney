@@ -9,6 +9,7 @@ export interface Transaction {
   description: string; // cleaned, single-spaced
   amount: number; // negative = debit (money out / charge), positive = credit (money in / payment / refund)
   type: TransactionType;
+  category?: string; // as printed by the export, when it prints one (e.g. "Restaurants")
   referenceNumber?: string;
   balance?: number; // running balance if the statement prints one (bank accounts)
   rawLine: string; // original text, untouched, for debugging

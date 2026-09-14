@@ -23,7 +23,8 @@ type ColumnRole =
   | "balance"
   | "reference"
   | "typeHint"
-  | "status";
+  | "status"
+  | "category";
 
 type ColumnMap = Partial<Record<ColumnRole, number>>;
 type Decimal = "." | ",";
@@ -38,8 +39,11 @@ type DraftRow = {
   postedDate?: string;
   description: string;
   amount: number;
+  /** -1/1 when a Debit/Credit column says which way the money went, 0 when only the printed sign does. */
+  hintSign: -1 | 0 | 1;
   hasExplicitSign: boolean;
   typeHint?: string;
+  category?: string;
   referenceNumber?: string;
   balance?: number;
   rawLine: string;
@@ -144,9 +148,9 @@ const REFERENCE_ALIASES = [
   "check or slip",
 ];
 const TYPE_ALIASES = ["type", "transaction type", "debit credit", "dr cr", "cr dr"];
+const CATEGORY_ALIASES = ["category", "transaction category", "category name"];
 const STATUS_ALIASES = ["status"];
 const IGNORE_ALIASES = [
-  "category",
   "card member",
   "account",
   "card no",
@@ -228,6 +232,7 @@ const ALL_ROLE_ALIASES: Array<[ColumnRole, Set<string>]> = [
   ["reference", aliasSet(REFERENCE_ALIASES)],
   ["typeHint", aliasSet(TYPE_ALIASES)],
   ["status", aliasSet(STATUS_ALIASES)],
+  ["category", aliasSet(CATEGORY_ALIASES)],
 ];
 
 const VOCAB_ALIASES = new Set([
@@ -240,6 +245,7 @@ const VOCAB_ALIASES = new Set([
   ...REFERENCE_ALIASES,
   ...TYPE_ALIASES,
   ...STATUS_ALIASES,
+  ...CATEGORY_ALIASES,
   ...IGNORE_ALIASES,
 ]);
 
@@ -644,13 +650,6 @@ function typeHintSign(hint: string | undefined): -1 | 0 | 1 {
   return 0;
 }
 
-function applyTypeHintSign(amount: number, hint: string | undefined): number {
-  const sign = typeHintSign(hint);
-  if (sign === 0) return amount;
-  const magnitude = Math.abs(amount);
-  return sign * magnitude;
-}
-
 function combineDescription(row: string[], columns: ColumnMap): string {
   const main = columns.description !== undefined ? row[columns.description] ?? "" : "";
   const memo = columns.memo !== undefined ? row[columns.memo] ?? "" : "";
@@ -682,10 +681,14 @@ function applyBalanceSigns(drafts: DraftRow[]): void {
     const magnitude = Math.abs(current.amount);
     if (magnitude === 0 || delta === 0) continue;
     current.amount = delta < 0 ? -magnitude : magnitude;
+    // The running balance is the account's own answer; it outranks a Debit/Credit hint.
+    current.hintSign = 0;
   }
 }
 
-function shouldFlipSigns(drafts: DraftRow[], cardLike: boolean): boolean {
+function shouldFlipSigns(allDrafts: DraftRow[], cardLike: boolean): boolean {
+  // Rows a Debit/Credit column already placed say nothing about the printed convention.
+  const drafts = allDrafts.filter((draft) => draft.hintSign === 0);
   if (!cardLike || drafts.length === 0) return false;
   const negative = drafts.filter((draft) => draft.amount < 0);
   const positive = drafts.filter((draft) => draft.amount > 0);
@@ -724,6 +727,7 @@ function toTransaction(draft: DraftRow, kind: AccountKind): Transaction {
     description: draft.description,
     amount: draft.amount,
     type: hinted ?? classifyTransaction(draft.description, draft.amount, kind),
+    ...(draft.category ? { category: draft.category } : {}),
     ...(draft.referenceNumber ? { referenceNumber: draft.referenceNumber } : {}),
     ...(draft.balance !== undefined ? { balance: draft.balance } : {}),
     rawLine: draft.rawLine,
@@ -786,20 +790,28 @@ export function parseCsvStatement(doc: ExtractedCsv, opts?: { fileName?: string 
         return;
       }
       const hint = columns.typeHint !== undefined ? row[columns.typeHint] : undefined;
-      const amount = usedDebitCredit ? printed : applyTypeHintSign(printed, hint);
+      // The hint sign is applied after the flip decision: it already reads in our
+      // convention, so flipping it would turn a card's refunds back into charges.
+      const hintSign = usedDebitCredit ? 0 : typeHintSign(hint);
       const posted = columns.postedDate !== undefined ? parseDate(row[columns.postedDate] ?? "", { order }) : null;
       const reference = columns.reference !== undefined ? (row[columns.reference] ?? "").trim() : "";
+      // Apple Card repeats the Type column under Category ("Credit", "Debit", "Payment"):
+      // that is not a category, so drop it and let the row read as uncategorized.
+      const printedCategory = columns.category !== undefined ? (row[columns.category] ?? "").trim() : "";
+      const category = normalizeLabel(printedCategory) === normalizeLabel(hint ?? "") ? "" : printedCategory;
       const balance = columns.balance !== undefined ? parseCellAmount(row[columns.balance] ?? "", decimal) : null;
       drafts.push({
         date: parsedDate.iso,
         ...(posted ? { postedDate: posted.iso } : {}),
         description: combineDescription(row, columns),
-        amount,
+        amount: printed,
+        hintSign,
         hasExplicitSign:
           usedDebitCredit ||
           printed <= 0 ||
           typeHintSign(hint) !== 0,
         ...(hint?.trim() ? { typeHint: hint } : {}),
+        ...(category ? { category } : {}),
         ...(reference ? { referenceNumber: reference } : {}),
         ...(balance !== null ? { balance } : {}),
         rawLine,
@@ -826,8 +838,9 @@ export function parseCsvStatement(doc: ExtractedCsv, opts?: { fileName?: string 
   const flipped =
     !usedDebitCredit &&
     shouldFlipSigns(drafts, looksLikeCardForFlip(header, fileName, resolvedInstitution?.name));
-  if (flipped) {
-    for (const draft of drafts) draft.amount = round2(-draft.amount);
+  for (const draft of drafts) {
+    if (draft.hintSign !== 0) draft.amount = round2(draft.hintSign * Math.abs(draft.amount));
+    else if (flipped) draft.amount = round2(-draft.amount);
   }
 
   const transactions = drafts.map((draft) => toTransaction(draft, accountKind));
