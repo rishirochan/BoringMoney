@@ -106,7 +106,7 @@ export default function PilesPage() {
   /** An unnamed description becomes its own payee, so routing never waits on the AI. */
   function route(entry: { id: string; grouped: boolean; name: string }, pileId: string) {
     if (entry.grouped) savePayees(updatePayee(entry.id, { pileId }));
-    else savePayees([...payees, { id: crypto.randomUUID(), name: entry.name, descriptions: [entry.name], pileId }]);
+    else savePayees([...payees, { id: crypto.randomUUID(), name: entry.name.slice(0, 64), descriptions: [entry.name], pileId }]);
   }
 
   function split(payee: Payee, description: string) {
@@ -114,15 +114,8 @@ export default function PilesPage() {
       ...payees.map((candidate) => candidate.id === payee.id
         ? { ...candidate, descriptions: candidate.descriptions.filter((item) => item !== description) }
         : candidate),
-      { id: crypto.randomUUID(), name: description, descriptions: [description] },
+      { id: crypto.randomUUID(), name: description.slice(0, 64), descriptions: [description] },
     ]);
-  }
-
-  function move(index: number, by: number) {
-    const next = [...piles];
-    const [pile] = next.splice(index, 1);
-    next.splice(index + by, 0, pile);
-    void save({ piles: next, payees });
   }
 
   function deletePile(id: string) {
@@ -171,7 +164,7 @@ export default function PilesPage() {
         </div>
         {piles.length === 0 ? <p className="empty">No piles yet. Make one for each place your money sits.</p> : (
           <ul className="pile-list">
-            {piles.map((pile, index) => {
+            {piles.map((pile) => {
               const balance = balances.get(pile.id) ?? { moneyIn: 0, moneyOut: 0, net: 0, available: 0 };
               const funder = piles.find((candidate) => candidate.id === pile.fundedBy);
               const showAvailable = Boolean(funder) || piles.some((candidate) => candidate.fundedBy === pile.id);
@@ -198,8 +191,6 @@ export default function PilesPage() {
                       <option value="">Funded by nothing</option>
                       {piles.filter((candidate) => candidate.id !== pile.id).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
                     </select>
-                    <button type="button" className="btn" disabled={busy || index === 0} aria-label="Move up" onClick={() => move(index, -1)}>↑</button>
-                    <button type="button" className="btn" disabled={busy || index === piles.length - 1} aria-label="Move down" onClick={() => move(index, 1)}>↓</button>
                     <button type="button" className="btn btn-danger" disabled={busy} onClick={() => deletePile(pile.id)}>Delete</button>
                   </div>
                   {open && (
@@ -278,7 +269,7 @@ export default function PilesPage() {
                       {payee.descriptions.map((description) => (
                         <li key={description}>
                           <span className="pile-match-description">{description}</span>
-                          <button type="button" className="btn" disabled={busy} onClick={() => split(payee, description)}>Split</button>
+                          {payee.descriptions.length > 1 && <button type="button" className="btn" disabled={busy} onClick={() => split(payee, description)}>Split</button>}
                         </li>
                       ))}
                     </ul>
