@@ -11,20 +11,31 @@ let stopping = false;
 let restartTimer;
 
 function run(args, extraEnv = {}) {
+  // Own process group: `pnpm exec tsc` is a wrapper, so killing the child alone
+  // leaves the real tsc/vite/electron behind holding port 5173 on the next run.
   const child = spawn(pnpm, args, {
     stdio: "inherit",
     env: { ...baseEnv, ...extraEnv },
+    detached: true,
   });
   children.add(child);
   child.on("exit", () => children.delete(child));
   return child;
 }
 
+function killTree(child) {
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    child.kill();
+  }
+}
+
 function stopElectron() {
   if (electron) {
     const child = electron;
     electron = undefined;
-    child.kill();
+    killTree(child);
   }
 }
 
@@ -76,9 +87,13 @@ function stop(code = 0) {
   outputWatcher.close();
   clearTimeout(restartTimer);
   stopElectron();
-  for (const child of children) child.kill();
+  for (const child of children) killTree(child);
   process.exit(code);
 }
 
 process.on("SIGINT", () => stop());
 process.on("SIGTERM", () => stop());
+process.on("SIGHUP", () => stop());
+process.on("exit", () => {
+  for (const child of children) killTree(child);
+});

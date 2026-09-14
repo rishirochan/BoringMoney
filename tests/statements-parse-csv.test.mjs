@@ -206,11 +206,17 @@ test("Apple Card: purchase-positive flip and type hint Payment", () => {
   const parsed = parse("apple-card.csv");
   assert.equal(parsed.summary.institution, "Apple Card");
   assert.equal(parsed.summary.accountKind, "credit_card");
-  assert.equal(parsed.transactions.length, 3);
+  assert.equal(parsed.transactions.length, 4);
   assertChronological(parsed);
   assertFlip(parsed);
   assert.equal(byDesc(parsed, "AMAZON").postedDate, "2026-01-06");
+  // a Credit row is already money in; the charges-positive flip must leave it alone
+  assert.equal(byDesc(parsed, "TRADEWISE").amount, 59.99);
+  assert.equal(byDesc(parsed, "TRADEWISE").type, "refund");
   assert.equal(byDesc(parsed, "PAYMENT").type, "payment");
+  // the export prints its own categories; only the ones that just repeat Type are dropped
+  assert.equal(byDesc(parsed, "STARBUCKS").category, "Restaurants");
+  assert.equal(byDesc(parsed, "TRADEWISE").category, undefined);
   assert.equal(byDesc(parsed, "STARBUCKS").type, "purchase");
 });
 

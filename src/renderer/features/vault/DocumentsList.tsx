@@ -150,6 +150,12 @@ export default function DocumentsList({
                       </div>
                       <div className={isReconciled ? "src-doc-validation" : "src-doc-validation is-warn"}>
                         {reviewLabel(document)}
+                        {/* the percentage on its own says nothing: list what took it off 100% */}
+                        {document.validation?.issues.length ? (
+                          <ul className="src-doc-issues">
+                            {document.validation.issues.map((issue) => <li key={issue.code}>{issue.message}</li>)}
+                          </ul>
+                        ) : null}
                       </div>
                       <div className="src-doc-actions">
                         {!isEditing && document.fileName.toLowerCase().endsWith(".csv") && (

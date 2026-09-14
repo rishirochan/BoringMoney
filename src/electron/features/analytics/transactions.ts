@@ -69,7 +69,7 @@ export function transactionCategory(row: StoredTransaction): string {
 }
 
 export function transactionCurrency(row: StoredTransaction): string {
-  // Statement parsers do not capture currency yet; never mix those amounts with a known currency.
+  // Statement parsers do not capture currency yet.
   return row.currency ?? "Unknown";
 }
 
@@ -84,7 +84,8 @@ export function filterTransactions(rows: StoredTransaction[], filters: Transacti
     (!filters.merchant || (row.merchantName || row.description) === filters.merchant) &&
     (!filters.accountLabel || accountLabel(row, documents) === filters.accountLabel) &&
     (!filters.direction || (filters.direction === "in" ? row.amount > 0 : row.amount < 0 && (filters.direction !== "spending" || !row.isTransfer))) &&
-    (!filters.currency || transactionCurrency(row) === filters.currency) &&
+    // A row with no currency (every statement parser) sits with whichever currency is being viewed.
+    (!filters.currency || !row.currency || row.currency === filters.currency) &&
     (filters.pending === "include" || (filters.pending === "only" ? row.pending : !row.pending)) &&
     (!query || `${row.description} ${row.merchantName ?? ""} ${accountLabel(row, documents)}`.toLocaleLowerCase().includes(query))
   );
@@ -120,7 +121,7 @@ function amountGroups(rows: StoredTransaction[], label: (row: StoredTransaction)
 }
 
 export function summarizeTransactions(rows: StoredTransaction[], documents: DocumentRecord[] = []) {
-  const currencies = new Set(rows.map(transactionCurrency));
+  const currencies = new Set(rows.map((row) => row.currency).filter(Boolean));
   if (currencies.size > 1) throw new Error("Choose one currency before comparing amounts.");
   const scale = amountScale(rows);
   let incoming = 0;

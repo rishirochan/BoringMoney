@@ -4,7 +4,6 @@ import {
   accountLabel,
   filterTransactions,
   summarizeTransactions,
-  transactionCurrency,
   transactionCategory,
   type ChartSelection,
   type TransactionFilters,
@@ -100,8 +99,9 @@ export default function TransactionsPage() {
     () => [...new Set(transactions.map(transactionCategory))].sort((left, right) => left.localeCompare(right)),
     [transactions],
   );
+  // Statement rows do not state a currency and join whichever known currency is on screen.
   const currencies = useMemo(
-    () => [...new Set(transactions.map(transactionCurrency))].sort(),
+    () => [...new Set(transactions.map((transaction) => transaction.currency).filter(Boolean))].sort(),
     [transactions],
   );
   const selectedCurrency = filters.currency && currencies.includes(filters.currency)

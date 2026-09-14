@@ -41,10 +41,15 @@
 .src-panel > h3 {
   margin: 0;
 }
-/* ponytail: keeps the short AI panel under Banks, half width; nth-child beats threading a class through */
+/* ponytail: statements spans both rows so the AI panel sits right under Banks instead of
+   waiting for the tall statements column to end; nth-child beats threading a class through */
 @media (min-width: 52.01rem) {
+  .src-grid > section:nth-child(1) {
+    grid-row: 1 / span 2;
+  }
   .src-grid > section:nth-child(3) {
     grid-column: 2;
+    grid-row: 2;
   }
 }
 
@@ -256,6 +261,11 @@
 }
 .src-doc-validation.is-warn {
   color: var(--warn);
+}
+.src-doc-issues {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+  color: var(--text-dim);
 }
 .src-doc-actions {
   display: flex;
