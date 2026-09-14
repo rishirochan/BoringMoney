@@ -29,12 +29,29 @@
 }
 .pile-row,
 .pile-rule,
-.pile-unrouted li,
-.pile-suggestions li,
-.pile-matches li {
+.pile-suggestions li {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+.pile-unrouted li {
+  display: grid;
+  grid-template-columns: 1fr 3rem 8rem 8rem 9rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+.pile-unrouted .label,
+.pile-unrouted .num {
+  text-align: right;
+}
+.pile-matches li {
+  display: grid;
+  grid-template-columns: 7rem 1fr 8rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+.pile-matches .num:last-child {
+  text-align: right;
 }
 .pile-toggle {
   background: none;
@@ -65,6 +82,9 @@
 }
 .pile-match-description {
   flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

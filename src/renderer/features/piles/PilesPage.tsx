@@ -254,8 +254,8 @@ export default function PilesPage() {
               <li key={group.description}>
                 <span className="pile-match-description">{group.description}</span>
                 <span className="label">{group.count}×</span>
-                {group.moneyIn > 0 && <span className="num is-up">{formatMoney(group.moneyIn, currency)}</span>}
-                {group.moneyOut > 0 && <span className="num is-down">{formatMoney(group.moneyOut, currency)}</span>}
+                <span className="num is-up">{group.moneyIn > 0 ? formatMoney(group.moneyIn, currency) : ""}</span>
+                <span className="num is-down">{group.moneyOut > 0 ? formatMoney(group.moneyOut, currency) : ""}</span>
                 <select aria-label={`Route ${group.description}`} value="" disabled={busy || piles.length === 0} onChange={(event) => addRule(event.target.value, { pattern: group.description })}>
                   <option value="">Route to…</option>
                   {piles.map((pile) => <option key={pile.id} value={pile.id}>{pile.name}</option>)}
