@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import AiPage from "./features/ai/AiPage";
+import PilesPage from "./features/piles/PilesPage";
 import SourcesPage from "./features/sources/SourcesPage";
 import TransactionsPage from "./features/transactions/TransactionsPage";
 
-type Page = "transactions" | "sources" | "ai";
+type Page = "transactions" | "piles" | "sources" | "ai";
 
 function currentPage(): Page {
   if (window.location.hash === "#/sources") return "sources";
   if (window.location.hash === "#/ai") return "ai";
+  if (window.location.hash === "#/piles") return "piles";
   return "transactions";
 }
 
@@ -32,6 +34,9 @@ export default function App() {
           <a href="#/" aria-current={page === "transactions" ? "page" : undefined}>
             Transactions
           </a>
+          <a href="#/piles" aria-current={page === "piles" ? "page" : undefined}>
+            Piles
+          </a>
           <a href="#/ai" aria-current={page === "ai" ? "page" : undefined}>
             Ask AI
           </a>
@@ -41,7 +46,7 @@ export default function App() {
         </nav>
       </header>
       <div className="app-content">
-        {page === "sources" ? <SourcesPage /> : page === "ai" ? <AiPage /> : <TransactionsPage />}
+        {page === "sources" ? <SourcesPage /> : page === "piles" ? <PilesPage /> : page === "ai" ? <AiPage /> : <TransactionsPage />}
       </div>
     </main>
   );

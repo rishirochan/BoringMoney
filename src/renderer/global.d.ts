@@ -116,6 +116,9 @@ interface Window {
       { ok: true; path: string } | { ok: false; canceled: true }
     >;
     syncPlaid(itemId?: string): Promise<{ results: {itemId: string; institutionName: string; added: number; modified: number; removed: number; transactionCount: number; lastSyncedAt?: number; error?: string}[] }>;
+    listPiles(): Promise<import("../electron/features/piles/piles").Pile[]>;
+    savePiles(piles: import("../electron/features/piles/piles").Pile[]): Promise<import("../electron/features/piles/piles").Pile[]>;
+    suggestPileRules(provider: import("../electron/features/ai/types").AiProvider): Promise<{ suggestions: import("../electron/features/piles/suggest").PileSuggestion[] }>;
     getPlaidStatus(): Promise<PlaidStatus>;
     getPlaidCredentials(): Promise<{
       clientId: string;
