@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { accountKey, accountLabel } from "../../../electron/features/analytics/transactions";
-import { pileBalances, routeTransactions, type Pile, type PileRule } from "../../../electron/features/piles/piles";
-import { groupUnrouted, type PileSuggestion } from "../../../electron/features/piles/suggest";
+import {
+  pileBalances,
+  routeTransactions,
+  summarizePayees,
+  type Payee,
+  type Pile,
+  type PileStore,
+} from "../../../electron/features/piles/piles";
 import type { AiProvider } from "../../../electron/features/ai/types";
 import "./piles.css";
 
@@ -24,12 +29,12 @@ function message(error: unknown, fallback: string): string {
 export default function PilesPage() {
   const [vault, setVault] = useState<string | null>(null);
   const [piles, setPiles] = useState<Pile[]>([]);
+  const [payees, setPayees] = useState<Payee[]>([]);
   const [transactions, setTransactions] = useState<StoredTransaction[]>([]);
-  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
-  const [suggestions, setSuggestions] = useState<PileSuggestion[]>([]);
   const [provider, setProvider] = useState<AiProvider>("codex");
   const [filter, setFilter] = useState("");
   const [openPile, setOpenPile] = useState<string | null>(null);
+  const [openPayee, setOpenPayee] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -40,44 +45,48 @@ export default function PilesPage() {
       window.boringmoney.getVaultPath(),
       window.boringmoney.listPiles(),
       window.boringmoney.listTransactions(),
-      window.boringmoney.listDocuments(),
     ])
-      .then(([nextVault, nextPiles, nextTransactions, nextDocuments]) => {
+      .then(([nextVault, store, nextTransactions]) => {
         if (!active) return;
         setVault(nextVault);
-        setPiles(nextPiles);
+        setPiles(store.piles);
+        setPayees(store.payees);
         setTransactions(nextTransactions);
-        setDocuments(nextDocuments);
       })
       .catch((cause) => { if (active) setError(message(cause, "Could not load piles.")); })
       .finally(() => { if (active) setLoaded(true); });
     return () => { active = false; };
   }, []);
 
-  const { routed, unrouted } = useMemo(() => routeTransactions(transactions, piles, documents), [documents, piles, transactions]);
+  const { routed } = useMemo(() => routeTransactions(transactions, piles, payees), [payees, piles, transactions]);
   const balances = useMemo(() => pileBalances(piles, routed), [piles, routed]);
-  const groups = useMemo(() => groupUnrouted(unrouted), [unrouted]);
-  const accounts = useMemo(() => {
-    const labels = new Map<string, string>();
-    transactions.forEach((row) => labels.set(accountKey(row, documents), accountLabel(row, documents)));
-    return [...labels].sort(([, left], [, right]) => left.localeCompare(right));
-  }, [documents, transactions]);
+  const entries = useMemo(() => summarizePayees(transactions, payees), [payees, transactions]);
+  const entryById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
+  const payeeById = useMemo(() => new Map(payees.map((payee) => [payee.id, payee])), [payees]);
   // ponytail: the first known currency labels every total, so a vault holding two
   // currencies sums them blindly. Group per currency like summarizeTransactions if
   // anyone routes across currencies.
   const currency = transactions.find((row) => row.currency)?.currency ?? "USD";
-  const visibleGroups = groups.filter((group) => group.description.includes(filter.trim().toLowerCase()));
+  const unroutedEntries = entries.filter((entry) => !payeeById.get(entry.id)?.pileId);
+  const ungroupedCount = entries.filter((entry) => !entry.grouped).length;
+  const query = filter.trim().toLowerCase();
+  const visibleEntries = unroutedEntries.filter((entry) =>
+    entry.name.toLowerCase().includes(query) || entry.descriptions.some((description) => description.includes(query)));
 
-  async function save(next: Pile[]) {
+  async function save(next: PileStore) {
     setBusy(true);
     setError("");
     try {
-      setPiles(await window.boringmoney.savePiles(next));
+      const store = await window.boringmoney.savePiles(next);
+      setPiles(store.piles);
+      setPayees(store.payees);
     } catch (cause) {
       setError(message(cause, "Could not save piles."));
       // A rejected save leaves the screen showing what disk does not have, so go back to disk.
       try {
-        setPiles(await window.boringmoney.listPiles());
+        const store = await window.boringmoney.listPiles();
+        setPiles(store.piles);
+        setPayees(store.payees);
       } catch {
         // Keep the save error on screen: it says more than a second failure would.
       }
@@ -86,39 +95,55 @@ export default function PilesPage() {
     }
   }
 
-  function updatePile(id: string, change: Partial<Pile>): Pile[] {
-    return piles.map((pile) => (pile.id === id ? { ...pile, ...change } : pile));
+  function savePayees(next: Payee[]) {
+    void save({ piles, payees: next });
   }
 
-  function addRule(id: string, rule: PileRule) {
-    const pile = piles.find((candidate) => candidate.id === id);
-    if (pile) void save(updatePile(id, { rules: [...pile.rules, rule] }));
+  function updatePayee(id: string, change: Partial<Payee>): Payee[] {
+    return payees.map((payee) => (payee.id === id ? { ...payee, ...change } : payee));
+  }
+
+  /** An unnamed description becomes its own payee, so routing never waits on the AI. */
+  function route(entry: { id: string; grouped: boolean; name: string }, pileId: string) {
+    if (entry.grouped) savePayees(updatePayee(entry.id, { pileId }));
+    else savePayees([...payees, { id: crypto.randomUUID(), name: entry.name, descriptions: [entry.name], pileId }]);
+  }
+
+  function split(payee: Payee, description: string) {
+    savePayees([
+      ...payees.map((candidate) => candidate.id === payee.id
+        ? { ...candidate, descriptions: candidate.descriptions.filter((item) => item !== description) }
+        : candidate),
+      { id: crypto.randomUUID(), name: description, descriptions: [description] },
+    ]);
   }
 
   function move(index: number, by: number) {
     const next = [...piles];
     const [pile] = next.splice(index, 1);
     next.splice(index + by, 0, pile);
-    void save(next);
+    void save({ piles: next, payees });
   }
 
-  async function suggest() {
+  function deletePile(id: string) {
+    void save({
+      piles: piles.filter((pile) => pile.id !== id).map((pile) => pile.fundedBy === id ? { ...pile, fundedBy: undefined } : pile),
+      payees: payees.map((payee) => payee.pileId === id ? { ...payee, pileId: undefined } : payee),
+    });
+  }
+
+  async function group() {
     setBusy(true);
     setError("");
     try {
-      const result = await window.boringmoney.suggestPileRules(provider);
-      setSuggestions(result.suggestions);
-      if (result.suggestions.length === 0) setError("No rules to suggest for what is left.");
+      const store = await window.boringmoney.groupPayees(provider);
+      setPiles(store.piles);
+      setPayees(store.payees);
     } catch (cause) {
-      setError(message(cause, "Could not suggest rules."));
+      setError(message(cause, "Could not group payees."));
     } finally {
       setBusy(false);
     }
-  }
-
-  function accept(suggestion: PileSuggestion) {
-    setSuggestions((current) => current.filter((item) => item !== suggestion));
-    addRule(suggestion.pileId, { pattern: suggestion.pattern, ...(suggestion.direction ? { direction: suggestion.direction } : {}) });
   }
 
   if (!loaded) return <div className="pile-page"><section className="glass"><p className="empty">Loading piles…</p></section></div>;
@@ -141,7 +166,7 @@ export default function PilesPage() {
         <div className="section-heading">
           <h1 id="piles-title">Piles</h1>
           <div className="section-actions">
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void save([...piles, { id: crypto.randomUUID(), name: "New pile", rules: [] }])}>New pile</button>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void save({ piles: [...piles, { id: crypto.randomUUID(), name: "New pile" }], payees })}>New pile</button>
           </div>
         </div>
         {piles.length === 0 ? <p className="empty">No piles yet. Make one for each place your money sits.</p> : (
@@ -155,52 +180,40 @@ export default function PilesPage() {
               return (
                 <li className="pile-card" key={pile.id}>
                   <div className="pile-row">
-                    <button type="button" className="pile-toggle" aria-expanded={open} onClick={() => setOpenPile(open ? null : pile.id)}>{open ? "▾" : "▸"}</button>
+                    <button type="button" className="pile-toggle" aria-expanded={open} aria-label={`Show ${pile.name}`} onClick={() => setOpenPile(open ? null : pile.id)}>{open ? "▾" : "▸"}</button>
                     <input
                       className="pile-name"
                       aria-label="Pile name"
                       maxLength={64}
                       value={pile.name}
-                      onChange={(event) => setPiles(updatePile(pile.id, { name: event.target.value }))}
-                      onBlur={() => void save(piles)}
+                      onChange={(event) => setPiles(piles.map((candidate) => candidate.id === pile.id ? { ...candidate, name: event.target.value } : candidate))}
+                      onBlur={() => void save({ piles, payees })}
                     />
                     {funder && <span className="badge">funded by {funder.name}</span>}
                     <span className="pile-figure"><span className="num is-up">{formatMoney(balance.moneyIn, currency)}</span><span className="label">In</span></span>
                     <span className="pile-figure"><span className="num is-down">{formatMoney(balance.moneyOut, currency)}</span><span className="label">Out</span></span>
                     <span className="pile-figure"><span className={`num ${balance.net < 0 ? "is-down" : "is-up"}`}>{formatMoney(balance.net, currency)}</span><span className="label">Net</span></span>
                     {showAvailable && <span className="pile-figure"><span className={`num ${balance.available < 0 ? "is-down" : "is-up"}`}>{formatMoney(balance.available, currency)}</span><span className="label">Available</span></span>}
-                    <select aria-label="Funded by" value={pile.fundedBy ?? ""} disabled={busy} onChange={(event) => void save(updatePile(pile.id, { fundedBy: event.target.value || undefined }))}>
+                    <select aria-label="Funded by" value={pile.fundedBy ?? ""} disabled={busy} onChange={(event) => void save({ piles: piles.map((candidate) => candidate.id === pile.id ? { ...candidate, fundedBy: event.target.value || undefined } : candidate), payees })}>
                       <option value="">Funded by nothing</option>
                       {piles.filter((candidate) => candidate.id !== pile.id).map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
                     </select>
                     <button type="button" className="btn" disabled={busy || index === 0} aria-label="Move up" onClick={() => move(index, -1)}>↑</button>
                     <button type="button" className="btn" disabled={busy || index === piles.length - 1} aria-label="Move down" onClick={() => move(index, 1)}>↓</button>
-                    <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void save(piles.filter((candidate) => candidate.id !== pile.id).map((candidate) => candidate.fundedBy === pile.id ? { ...candidate, fundedBy: undefined } : candidate))}>Delete</button>
+                    <button type="button" className="btn btn-danger" disabled={busy} onClick={() => deletePile(pile.id)}>Delete</button>
                   </div>
                   {open && (
                     <div className="pile-details">
-                      <ul className="pile-rules">
-                        {pile.rules.length === 0 && <li className="empty">No rules yet. Route something from below.</li>}
-                        {pile.rules.map((rule, ruleIndex) => {
-                          const replace = (change: Partial<PileRule>) =>
-                            save(updatePile(pile.id, { rules: pile.rules.map((item, i) => i === ruleIndex ? { ...item, ...change } : item) }));
+                      <ul className="pile-payees">
+                        {payees.filter((payee) => payee.pileId === pile.id).length === 0 && <li className="empty">No payees yet. Route one from below.</li>}
+                        {payees.filter((payee) => payee.pileId === pile.id).map((payee) => {
+                          const entry = entryById.get(payee.id);
                           return (
-                            <li className="pile-rule" key={ruleIndex}>
-                              <input
-                                aria-label="Rule text"
-                                maxLength={120}
-                                value={rule.pattern}
-                                onChange={(event) => setPiles(updatePile(pile.id, { rules: pile.rules.map((item, i) => i === ruleIndex ? { ...item, pattern: event.target.value } : item) }))}
-                                onBlur={() => void save(piles)}
-                              />
-                              <select aria-label="Direction" value={rule.direction ?? ""} disabled={busy} onChange={(event) => void replace({ direction: (event.target.value || undefined) as PileRule["direction"] })}>
-                                <option value="">Any direction</option><option value="in">Money in</option><option value="out">Money out</option>
-                              </select>
-                              <select aria-label="Account" value={rule.account ?? ""} disabled={busy} onChange={(event) => void replace({ account: event.target.value || undefined })}>
-                                <option value="">All accounts</option>
-                                {accounts.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                              </select>
-                              <button type="button" className="btn" disabled={busy} onClick={() => void save(updatePile(pile.id, { rules: pile.rules.filter((_, i) => i !== ruleIndex) }))}>Remove</button>
+                            <li key={payee.id}>
+                              <span className="pile-match-description">{payee.name}</span>
+                              <span className="num is-up">{entry && entry.moneyIn > 0 ? formatMoney(entry.moneyIn, currency) : ""}</span>
+                              <span className="num is-down">{entry && entry.moneyOut > 0 ? formatMoney(entry.moneyOut, currency) : ""}</span>
+                              <button type="button" className="btn" disabled={busy} onClick={() => savePayees(updatePayee(payee.id, { pileId: undefined }))}>Remove</button>
                             </li>
                           );
                         })}
@@ -229,39 +242,50 @@ export default function PilesPage() {
           <h2 id="unrouted-title">Unrouted</h2>
           <div className="section-actions">
             <input type="search" aria-label="Filter unrouted" placeholder="Filter" value={filter} onChange={(event) => setFilter(event.target.value)} />
-            <select aria-label="AI provider" value={provider} disabled={busy} onChange={(event) => setProvider(event.target.value as AiProvider)}>
-              <option value="codex">Codex</option><option value="claude">Claude</option>
-            </select>
-            <button type="button" className="btn" disabled={busy || piles.length === 0 || groups.length === 0} onClick={() => void suggest()}>{busy ? "Working…" : "Suggest with AI"}</button>
+            {ungroupedCount > 0 && <>
+              <select aria-label="AI provider" value={provider} disabled={busy} onChange={(event) => setProvider(event.target.value as AiProvider)}>
+                <option value="codex">Codex</option><option value="claude">Claude</option>
+              </select>
+              <button type="button" className="btn" disabled={busy} onClick={() => void group()}>{busy ? "Working…" : "Group with AI"}</button>
+            </>}
           </div>
         </div>
-        {suggestions.length > 0 && (
-          <ul className="pile-suggestions">
-            {suggestions.map((suggestion, index) => (
-              <li key={index}>
-                <span className="badge">{piles.find((pile) => pile.id === suggestion.pileId)?.name}</span>
-                <span className="pile-match-description">{suggestion.pattern}</span>
-                {suggestion.direction && <span className="label">{suggestion.direction === "in" ? "Money in" : "Money out"}</span>}
-                <button type="button" className="btn btn-primary" disabled={busy} onClick={() => accept(suggestion)}>Accept</button>
-                <button type="button" className="btn" onClick={() => setSuggestions((current) => current.filter((item) => item !== suggestion))}>Dismiss</button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {visibleGroups.length === 0 ? <p className="empty">{groups.length === 0 ? "Every transaction is in a pile." : "Nothing matches this filter."}</p> : (
+        {visibleEntries.length === 0 ? <p className="empty">{unroutedEntries.length === 0 ? "Every transaction is in a pile." : "Nothing matches this filter."}</p> : (
           <ul className="pile-unrouted">
-            {visibleGroups.map((group) => (
-              <li key={group.description}>
-                <span className="pile-match-description">{group.description}</span>
-                <span className="label">{group.count}×</span>
-                <span className="num is-up">{group.moneyIn > 0 ? formatMoney(group.moneyIn, currency) : ""}</span>
-                <span className="num is-down">{group.moneyOut > 0 ? formatMoney(group.moneyOut, currency) : ""}</span>
-                <select aria-label={`Route ${group.description}`} value="" disabled={busy || piles.length === 0} onChange={(event) => addRule(event.target.value, { pattern: group.description })}>
-                  <option value="">Route to…</option>
-                  {piles.map((pile) => <option key={pile.id} value={pile.id}>{pile.name}</option>)}
-                </select>
-              </li>
-            ))}
+            {visibleEntries.map((entry) => {
+              const payee = payeeById.get(entry.id);
+              const open = openPayee === entry.id;
+              return (
+                <li key={entry.id}>
+                  <span className="pile-unrouted-name">
+                    {payee
+                      ? <button type="button" className="pile-toggle" aria-expanded={open} aria-label={`Show ${entry.name}`} onClick={() => setOpenPayee(open ? null : entry.id)}>{open ? "▾" : "▸"}</button>
+                      : <span className="pile-toggle" aria-hidden="true" />}
+                    {payee
+                      ? <input className="pile-name" aria-label="Payee name" maxLength={64} value={payee.name}
+                          onChange={(event) => setPayees(updatePayee(payee.id, { name: event.target.value }))}
+                          onBlur={() => savePayees(payees)} />
+                      : <><span className="pile-match-description">{entry.name}</span><span className="label is-dim">ungrouped</span></>}
+                  </span>
+                  <span className="num is-up">{entry.moneyIn > 0 ? formatMoney(entry.moneyIn, currency) : ""}</span>
+                  <span className="num is-down">{entry.moneyOut > 0 ? formatMoney(entry.moneyOut, currency) : ""}</span>
+                  <select aria-label={`Route ${entry.name}`} value="" disabled={busy || piles.length === 0} onChange={(event) => route(entry, event.target.value)}>
+                    <option value="">Route to…</option>
+                    {piles.map((pile) => <option key={pile.id} value={pile.id}>{pile.name}</option>)}
+                  </select>
+                  {payee && open && (
+                    <ul className="pile-descriptions">
+                      {payee.descriptions.map((description) => (
+                        <li key={description}>
+                          <span className="pile-match-description">{description}</span>
+                          <button type="button" className="btn" disabled={busy} onClick={() => split(payee, description)}>Split</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

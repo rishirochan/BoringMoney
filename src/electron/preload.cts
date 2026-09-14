@@ -24,8 +24,8 @@ contextBridge.exposeInMainWorld("boringmoney", {
   queryAi: (request: unknown) => ipcRenderer.invoke("ai:query", request),
   cancelAi: (requestId: string) => ipcRenderer.invoke("ai:cancel", requestId),
   listPiles: () => ipcRenderer.invoke("piles:list"),
-  savePiles: (piles: unknown) => ipcRenderer.invoke("piles:save", piles),
-  suggestPileRules: (provider: string) => ipcRenderer.invoke("piles:suggest", provider),
+  savePiles: (store: unknown) => ipcRenderer.invoke("piles:save", store),
+  groupPayees: (provider: string) => ipcRenderer.invoke("payees:group", provider),
   getPlaidStatus: () => ipcRenderer.invoke("plaid:status"),
   getPlaidCredentials: () => ipcRenderer.invoke("plaid:credentials"),
   savePlaidCredentials: (credentials: {
