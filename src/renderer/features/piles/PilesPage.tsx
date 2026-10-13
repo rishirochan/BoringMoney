@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  normalizeDescription,
   pileBalances,
   routeTransactions,
   summarizePayees,
@@ -31,16 +32,21 @@ export default function PilesPage() {
   const [piles, setPiles] = useState<Pile[]>([]);
   const [payees, setPayees] = useState<Payee[]>([]);
   const [transactions, setTransactions] = useState<StoredTransaction[]>([]);
-  const [provider, setProvider] = useState<AiProvider>("codex");
+  const [provider, setProvider] = useState<AiProvider | null>(null);
   const [filter, setFilter] = useState("");
   const [openPile, setOpenPile] = useState<string | null>(null);
   const [openPayee, setOpenPayee] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const grouping = useRef(false);
 
   useEffect(() => {
     let active = true;
+    // A provider that is not signed in just leaves grouping to the button.
+    window.boringmoney.getAiStatus()
+      .then((statuses) => { if (active) setProvider(statuses.find((status) => status.state === "ready")?.provider ?? null); })
+      .catch(() => {});
     Promise.all([
       window.boringmoney.getVaultPath(),
       window.boringmoney.listPiles(),
@@ -63,6 +69,14 @@ export default function PilesPage() {
   const entries = useMemo(() => summarizePayees(transactions, payees), [payees, transactions]);
   const entryById = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
   const payeeById = useMemo(() => new Map(payees.map((payee) => [payee.id, payee])), [payees]);
+  const rowsByDescription = useMemo(() => {
+    const index = new Map<string, StoredTransaction[]>();
+    for (const row of transactions) {
+      const key = normalizeDescription(row.description);
+      index.set(key, [...(index.get(key) ?? []), row]);
+    }
+    return index;
+  }, [transactions]);
   // ponytail: the first known currency labels every total, so a vault holding two
   // currencies sums them blindly. Group per currency like summarizeTransactions if
   // anyone routes across currencies.
@@ -126,6 +140,8 @@ export default function PilesPage() {
   }
 
   async function group() {
+    if (!provider || grouping.current) return;
+    grouping.current = true;
     setBusy(true);
     setError("");
     try {
@@ -135,9 +151,16 @@ export default function PilesPage() {
     } catch (cause) {
       setError(message(cause, "Could not group payees."));
     } finally {
+      grouping.current = false;
       setBusy(false);
     }
   }
+
+  // Similar transactions show up grouped without being asked. Each pass handles a
+  // batch and turns every description into a payee, so this converges; an error stops it.
+  useEffect(() => {
+    if (loaded && vault && provider && ungroupedCount > 0 && !busy && !error) void group();
+  }, [loaded, vault, provider, ungroupedCount, busy, error]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!loaded) return <div className="pile-page"><section className="glass"><p className="empty">Loading piles…</p></section></div>;
   if (!vault) {
@@ -202,6 +225,7 @@ export default function PilesPage() {
                           return (
                             <li key={payee.id}>
                               <span className="pile-match-description">{payee.name}</span>
+                              <span className="num is-dim">{entry && entry.count > 1 ? `×${entry.count}` : ""}</span>
                               <span className="num is-up">{entry && entry.moneyIn > 0 ? formatMoney(entry.moneyIn, currency) : ""}</span>
                               <span className="num is-down">{entry && entry.moneyOut > 0 ? formatMoney(entry.moneyOut, currency) : ""}</span>
                               <button type="button" className="btn" disabled={busy} onClick={() => savePayees(updatePayee(payee.id, { pileId: undefined }))}>Remove</button>
@@ -234,10 +258,10 @@ export default function PilesPage() {
           <div className="section-actions">
             <input type="search" aria-label="Filter unrouted" placeholder="Filter" value={filter} onChange={(event) => setFilter(event.target.value)} />
             {ungroupedCount > 0 && <>
-              <select aria-label="AI provider" value={provider} disabled={busy} onChange={(event) => setProvider(event.target.value as AiProvider)}>
-                <option value="codex">Codex</option><option value="claude">Claude</option>
+              <select aria-label="AI provider" value={provider ?? ""} disabled={busy} onChange={(event) => setProvider(event.target.value as AiProvider)}>
+                <option value="" disabled>Provider</option><option value="codex">Codex</option><option value="claude">Claude</option>
               </select>
-              <button type="button" className="btn" disabled={busy} onClick={() => void group()}>{busy ? "Working…" : "Group with AI"}</button>
+              <button type="button" className="btn" disabled={busy || !provider} onClick={() => void group()}>{busy ? "Grouping…" : "Group with AI"}</button>
             </>}
           </div>
         </div>
@@ -249,29 +273,32 @@ export default function PilesPage() {
               return (
                 <li key={entry.id}>
                   <span className="pile-unrouted-name">
-                    {payee
-                      ? <button type="button" className="pile-toggle" aria-expanded={open} aria-label={`Show ${entry.name}`} onClick={() => setOpenPayee(open ? null : entry.id)}>{open ? "▾" : "▸"}</button>
-                      : <span className="pile-toggle" aria-hidden="true" />}
+                    <button type="button" className="pile-toggle" aria-expanded={open} aria-label={`Show ${entry.name}`} onClick={() => setOpenPayee(open ? null : entry.id)}>{open ? "▾" : "▸"}</button>
                     {payee
                       ? <input className="pile-name" aria-label="Payee name" maxLength={64} value={payee.name}
                           onChange={(event) => setPayees(updatePayee(payee.id, { name: event.target.value }))}
                           onBlur={() => savePayees(payees)} />
                       : <><span className="pile-match-description">{entry.name}</span><span className="label is-dim">ungrouped</span></>}
                   </span>
+                  <span className="num is-dim">{entry.count > 1 ? `×${entry.count}` : ""}</span>
                   <span className="num is-up">{entry.moneyIn > 0 ? formatMoney(entry.moneyIn, currency) : ""}</span>
                   <span className="num is-down">{entry.moneyOut > 0 ? formatMoney(entry.moneyOut, currency) : ""}</span>
                   <select aria-label={`Route ${entry.name}`} value="" disabled={busy || piles.length === 0} onChange={(event) => route(entry, event.target.value)}>
                     <option value="">Route to…</option>
                     {piles.map((pile) => <option key={pile.id} value={pile.id}>{pile.name}</option>)}
                   </select>
-                  {payee && open && (
-                    <ul className="pile-descriptions">
-                      {payee.descriptions.map((description) => (
-                        <li key={description}>
-                          <span className="pile-match-description">{description}</span>
-                          {payee.descriptions.length > 1 && <button type="button" className="btn" disabled={busy} onClick={() => split(payee, description)}>Split</button>}
+                  {open && (
+                    <ul className="pile-matches">
+                      {entry.descriptions.flatMap((description) => (rowsByDescription.get(description) ?? []).map((row, rowIndex) => (
+                        <li key={`${description}-${row.documentId}-${row.date}-${rowIndex}`}>
+                          <span className="num">{formatDate(row.date)}</span>
+                          <span className="pile-match-description">{row.description}</span>
+                          <span className={`num ${row.amount < 0 ? "is-down" : "is-up"}`}>{formatMoney(row.amount, currency)}</span>
+                          {/* Split acts on a whole description, so it sits on that description's first transaction only. */}
+                          <span>{payee && payee.descriptions.length > 1 && rowIndex === 0 &&
+                            <button type="button" className="btn" disabled={busy} onClick={() => split(payee, description)}>Split</button>}</span>
                         </li>
-                      ))}
+                      )))}
                     </ul>
                   )}
                 </li>

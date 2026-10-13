@@ -123,11 +123,12 @@ test("AI groups are dropped unless every part of them checks out", () => {
   assert.deepEqual(netflix, { id: "raw:netflix", name: "netflix", grouped: false, descriptions: ["netflix"], count: 1, moneyIn: 0, moneyOut: 15 });
 });
 
-test("grouping sends only descriptions and keeps payees when the model returns nothing", async () => {
+test("grouping sends only descriptions and gives whatever the model skips its own payee", async () => {
   const payees = [payee(2, "Mom", ["zelle from mom"])];
   let prompt = "";
-  const unchanged = await groupPayees(payees, ["trader joes"], async (text) => { prompt = text; return { groups: [] }; }, () => uuid(5));
-  assert.deepEqual(unchanged, payees);
+  const grouped = await groupPayees(payees, ["trader joes"], async (text) => { prompt = text; return { groups: [] }; }, () => uuid(5));
+  assert.deepEqual(grouped, [...payees, payee(5, "trader joes", ["trader joes"])]);
+  validateStore({ piles: [], payees: grouped });
   assert.match(prompt, /trader joes/);
   assert.match(prompt, new RegExp(uuid(2)));
   assert.doesNotMatch(prompt, /\d+\.\d\d|2026-/);

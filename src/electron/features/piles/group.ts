@@ -90,5 +90,15 @@ export async function groupPayees(
 ): Promise<Payee[]> {
   if (descriptions.length === 0) return payees;
   const response = await invoke(groupingPrompt(payees, descriptions), GROUP_SCHEMA);
-  return applyGroups(payees, parseGroups(response, payees, descriptions), newId);
+  const grouped = applyGroups(payees, parseGroups(response, payees, descriptions), newId);
+  // Whatever the model left out becomes its own payee, so every description is
+  // sent exactly once and the list reads as grouped after a single pass.
+  // ponytail: two such singletons the model would later see as one payee cannot be
+  // merged by the AI, since it only places new descriptions. Add a merge control if that bites.
+  const claimed = new Set(grouped.flatMap((payee) => payee.descriptions));
+  return [
+    ...grouped,
+    ...descriptions.filter((description) => !claimed.has(description))
+      .map((description) => ({ id: newId(), name: description.slice(0, 64), descriptions: [description] })),
+  ];
 }
