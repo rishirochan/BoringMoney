@@ -94,7 +94,7 @@ export function filterTransactions(rows: StoredTransaction[], filters: Transacti
 type Breakdown = { label: string; amount: number; count: number };
 export type TransactionSummary = ReturnType<typeof summarizeTransactions>;
 
-function amountScale(rows: StoredTransaction[]): number {
+export function amountScale(rows: StoredTransaction[]): number {
   const precision = rows.reduce((maximum, row) => {
     const [mantissa, exponent = "0"] = Math.abs(row.amount).toString().split("e");
     return Math.max(maximum, (mantissa.split(".")[1]?.length ?? 0) - Number(exponent));
@@ -102,7 +102,7 @@ function amountScale(rows: StoredTransaction[]): number {
   return 10 ** precision;
 }
 
-function amountUnits(amount: number, scale: number): number {
+export function amountUnits(amount: number, scale: number): number {
   const units = Math.round(amount * scale);
   if (!Number.isSafeInteger(units)) throw new Error("The amounts exceed the precision supported for this comparison.");
   return units;

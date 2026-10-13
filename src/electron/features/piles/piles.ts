@@ -1,0 +1,213 @@
+import { amountScale, amountUnits } from "../analytics/transactions.js";
+import type { StoredTransaction } from "../statements/types.js";
+
+export type Pile = { id: string; name: string; fundedBy?: string };
+/** descriptions are normalizeDescription() outputs and are unique across all payees. */
+export type Payee = { id: string; name: string; descriptions: string[]; pileId?: string };
+export type PileStore = { piles: Pile[]; payees: Payee[] };
+export type PileBalance = { moneyIn: number; moneyOut: number; net: number; available: number };
+/** One payee, or one description no payee has claimed yet. */
+export type PayeeSummary = {
+  id: string;
+  name: string;
+  grouped: boolean;
+  descriptions: string[];
+  count: number;
+  moneyIn: number;
+  moneyOut: number;
+};
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_PILES = 200;
+const MAX_PAYEES = 2_000;
+const MAX_DESCRIPTION = 200;
+
+/**
+ * The stable part of a description: Plaid and statements append ids, dates and
+ * reference numbers that differ on every occurrence of the same payment.
+ */
+// ponytail: any token of 4+ characters carrying a digit is dropped as an id, so a
+// name like "7-eleven" or "24hr" disappears with it. If that bites, keep tokens
+// that are mostly letters and only drop the ones that are mostly digits.
+export function normalizeDescription(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[#*]+/g, " ")
+    .split(/\s+/)
+    // A long token carrying a digit is an id, a card number or a date, never a name.
+    .filter((token) => !(token.length >= 4 && /\d/.test(token)))
+    .join(" ")
+    .replace(/\d+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** description → payee. Descriptions are unique across payees, so this is a plain map. */
+export function payeeIndex(payees: Payee[]): Map<string, Payee> {
+  return new Map(payees.flatMap((payee) => payee.descriptions.map((description) => [description, payee] as const)));
+}
+
+export function routeTransactions(
+  rows: StoredTransaction[],
+  piles: Pile[],
+  payees: Payee[],
+): { routed: Map<string, StoredTransaction[]>; unrouted: StoredTransaction[] } {
+  const byDescription = payeeIndex(payees);
+  const routed = new Map(piles.map((pile) => [pile.id, [] as StoredTransaction[]]));
+  const unrouted: StoredTransaction[] = [];
+  for (const row of rows) {
+    const pileId = byDescription.get(normalizeDescription(row.description))?.pileId;
+    const bucket = pileId === undefined ? undefined : routed.get(pileId);
+    if (bucket) bucket.push(row);
+    else unrouted.push(row);
+  }
+  return { routed, unrouted };
+}
+
+export function pileBalances(piles: Pile[], routed: Map<string, StoredTransaction[]>): Map<string, PileBalance> {
+  const scale = amountScale(piles.flatMap((pile) => routed.get(pile.id) ?? []));
+  const totals = new Map(piles.map((pile) => {
+    let incoming = 0;
+    let outgoing = 0;
+    for (const row of routed.get(pile.id) ?? []) {
+      if (!Number.isFinite(row.amount)) throw new Error("A transaction contains an invalid amount.");
+      const units = amountUnits(row.amount, scale);
+      incoming += Math.max(units, 0);
+      outgoing += Math.max(-units, 0);
+    }
+    return [pile.id, { incoming, outgoing }];
+  }));
+  // What a pile still holds is its own net plus whatever the piles it funds have
+  // left, so a refund into a funded pile flows back and chains roll up.
+  // validateStore rejects funding cycles, so the recursion always terminates.
+  const available = (pile: Pile): number => {
+    const { incoming, outgoing } = totals.get(pile.id) ?? { incoming: 0, outgoing: 0 };
+    return piles
+      .filter((candidate) => candidate.fundedBy === pile.id)
+      .reduce((sum, candidate) => sum + available(candidate), incoming - outgoing);
+  };
+  return new Map(piles.map((pile) => {
+    const { incoming, outgoing } = totals.get(pile.id) ?? { incoming: 0, outgoing: 0 };
+    return [pile.id, {
+      moneyIn: incoming / scale,
+      moneyOut: outgoing / scale,
+      net: (incoming - outgoing) / scale,
+      available: available(pile) / scale,
+    }];
+  }));
+}
+
+/** Every payee plus every description no payee claims, most transactions first. */
+export function summarizePayees(rows: StoredTransaction[], payees: Payee[]): PayeeSummary[] {
+  const scale = amountScale(rows);
+  const byDescription = payeeIndex(payees);
+  const totals = new Map<string, { count: number; incoming: number; outgoing: number }>();
+  const ungrouped = new Map<string, string>();
+  for (const row of rows) {
+    const description = normalizeDescription(row.description);
+    if (!description) continue;
+    const payee = byDescription.get(description);
+    const id = payee ? payee.id : `raw:${description}`;
+    if (!payee) ungrouped.set(id, description);
+    const total = totals.get(id) ?? { count: 0, incoming: 0, outgoing: 0 };
+    const units = amountUnits(row.amount, scale);
+    total.count++;
+    total.incoming += Math.max(units, 0);
+    total.outgoing += Math.max(-units, 0);
+    totals.set(id, total);
+  }
+  const entries: PayeeSummary[] = [
+    ...payees.map((payee) => ({ id: payee.id, name: payee.name, grouped: true, descriptions: payee.descriptions })),
+    ...[...ungrouped].map(([id, description]) => ({ id, name: description, grouped: false, descriptions: [description] })),
+  ].map((entry) => {
+    const total = totals.get(entry.id) ?? { count: 0, incoming: 0, outgoing: 0 };
+    return { ...entry, count: total.count, moneyIn: total.incoming / scale, moneyOut: total.outgoing / scale };
+  });
+  return entries.sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
+}
+
+function record(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Piles are damaged. Reload and try again.");
+  return value as Record<string, unknown>;
+}
+
+export function validName(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Give every pile and payee a name.");
+  const name = value.trim();
+  if (!name || name.length > 64) throw new Error("Names must be between 1 and 64 characters.");
+  if (/[\u0000-\u001f\u007f]/.test(name)) throw new Error("Names cannot contain line breaks.");
+  return name;
+}
+
+function validId(value: unknown, message: string): string {
+  if (typeof value !== "string" || !UUID_PATTERN.test(value)) throw new Error(message);
+  return value;
+}
+
+function validPile(value: unknown): Pile {
+  const input = record(value);
+  if (Object.keys(input).some((key) => !["id", "name", "fundedBy"].includes(key))) {
+    throw new Error("A pile has an unknown setting.");
+  }
+  if (input.fundedBy !== undefined && typeof input.fundedBy !== "string") throw new Error("A pile has an invalid funding source.");
+  return {
+    id: validId(input.id, "A pile has an invalid id."),
+    name: validName(input.name),
+    ...(input.fundedBy ? { fundedBy: input.fundedBy } : {}),
+  };
+}
+
+function validPayee(value: unknown): Payee {
+  const input = record(value);
+  if (Object.keys(input).some((key) => !["id", "name", "descriptions", "pileId"].includes(key))) {
+    throw new Error("A payee has an unknown setting.");
+  }
+  if (!Array.isArray(input.descriptions)) throw new Error("A payee has invalid descriptions.");
+  const descriptions = input.descriptions.map((description) => {
+    if (typeof description !== "string" || !description || description.length > MAX_DESCRIPTION) {
+      throw new Error("Payee descriptions must be between 1 and 200 characters.");
+    }
+    // Routing looks descriptions up by their normalized form, so anything else would never match.
+    if (normalizeDescription(description) !== description) throw new Error("A payee description is not normalized.");
+    return description;
+  });
+  if (input.pileId !== undefined && typeof input.pileId !== "string") throw new Error("A payee has an invalid pile.");
+  return {
+    id: validId(input.id, "A payee has an invalid id."),
+    name: validName(input.name),
+    descriptions,
+    ...(input.pileId ? { pileId: input.pileId } : {}),
+  };
+}
+
+/** Trust boundary: renderer input and the piles file both come through here. */
+export function validateStore(value: unknown): PileStore {
+  const input = record(value);
+  if (Object.keys(input).some((key) => !["piles", "payees"].includes(key))) throw new Error("Piles are damaged. Reload and try again.");
+  if (!Array.isArray(input.piles) || !Array.isArray(input.payees)) throw new Error("Piles are damaged. Reload and try again.");
+  if (input.piles.length > MAX_PILES) throw new Error(`Keep to ${MAX_PILES} piles or fewer.`);
+  if (input.payees.length > MAX_PAYEES) throw new Error(`Keep to ${MAX_PAYEES} payees or fewer.`);
+  const piles = input.piles.map(validPile);
+  const payees = input.payees.map(validPayee);
+
+  const pileIds = new Set(piles.map((pile) => pile.id));
+  if (pileIds.size !== piles.length) throw new Error("Two piles share an id.");
+  if (new Set(payees.map((payee) => payee.id)).size !== payees.length) throw new Error("Two payees share an id.");
+  const descriptions = payees.flatMap((payee) => payee.descriptions);
+  if (new Set(descriptions).size !== descriptions.length) throw new Error("Two payees claim the same description.");
+  for (const payee of payees) {
+    if (payee.pileId !== undefined && !pileIds.has(payee.pileId)) throw new Error("A payee points at a pile that no longer exists.");
+  }
+  for (const pile of piles) {
+    if (pile.fundedBy === undefined) continue;
+    if (!pileIds.has(pile.fundedBy)) throw new Error("A pile is funded by a pile that no longer exists.");
+    const seen = new Set<string>();
+    let current: string | undefined = pile.id;
+    while (current !== undefined) {
+      if (seen.has(current)) throw new Error("A pile cannot fund itself, directly or through other piles.");
+      seen.add(current);
+      current = piles.find((candidate) => candidate.id === current)?.fundedBy;
+    }
+  }
+  return { piles, payees };
+}

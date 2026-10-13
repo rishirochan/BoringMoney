@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld("boringmoney", {
   setAiSettings: (provider: string, patch: { model?: string; effort?: string }) => ipcRenderer.invoke("ai:set-settings", provider, patch),
   queryAi: (request: unknown) => ipcRenderer.invoke("ai:query", request),
   cancelAi: (requestId: string) => ipcRenderer.invoke("ai:cancel", requestId),
+  listPiles: () => ipcRenderer.invoke("piles:list"),
+  savePiles: (store: unknown) => ipcRenderer.invoke("piles:save", store),
+  groupPayees: (provider: string) => ipcRenderer.invoke("payees:group", provider),
   getPlaidStatus: () => ipcRenderer.invoke("plaid:status"),
   getPlaidCredentials: () => ipcRenderer.invoke("plaid:credentials"),
   savePlaidCredentials: (credentials: {

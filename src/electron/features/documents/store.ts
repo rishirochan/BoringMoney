@@ -182,7 +182,7 @@ async function readManifest(vaultDir: string): Promise<DocumentRecord[]> {
   return manifest.documents.filter(isDocumentRecord);
 }
 
-async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+export async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
   const temporaryPath = `${filePath}.tmp`;
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   try {

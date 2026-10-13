@@ -7,6 +7,7 @@ import {
   registerPlaidLinkProtocol,
 } from "./features/plaid/ipc.js";
 import { registerAiHandlers } from "./features/ai/ipc.js";
+import { registerPilesHandlers } from "./features/piles/ipc.js";
 import { listAllTransactions } from "./features/plaid/transactions.js";
 import { listDocuments } from "./features/documents/store.js";
 import { readVaultPath } from "./features/vault/ingest.js";
@@ -51,6 +52,7 @@ registerAiHandlers({
     return vault ? listDocuments(vault) : [];
   },
 });
+registerPilesHandlers({ getVaultPath: vaultPath });
 
 app.whenReady().then(() => {
   registerPlaidLinkProtocol();
